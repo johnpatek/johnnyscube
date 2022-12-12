@@ -15,7 +15,7 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
 {
     char absolute_path[256];
     char line_buffer[128];
-    int index;
+    int char_index;
     FILE *registry_file;
 
     srand((unsigned int)time(0));
@@ -27,9 +27,12 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
     audio->wavs = NULL;
     audio->wav_count = 0;
     audio->current = NULL;
+    audio->current_mutex = SDL_CreateMutex();
 
     while (fgets(line_buffer, 127, registry_file) != NULL)
     {
+        line_buffer[strcspn(line_buffer, "\n")] = 0;
+        
         snprintf(absolute_path, 256, "%s%s%s", registry_directory, PATH_SEPARATOR, line_buffer);
 
         audio->wavs = realloc(audio->wavs, sizeof(wav) * (audio->wav_count + 1));
@@ -42,6 +45,8 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
             &audio->spec,
             &((audio->wavs + audio->wav_count)->buffer),
             &((audio->wavs + audio->wav_count)->size));
+
+        printf("%u\n",(audio->wavs + audio->wav_count)->size);
 
         audio->wav_count++;
     }
@@ -79,6 +84,8 @@ int audio_destroy(audio_t audio)
     int wav_index;
 
     SDL_PauseAudioDevice(audio->device_id, SDL_TRUE);
+
+    SDL_DestroyMutex(audio->current_mutex);
 
     SDL_CloseAudioDevice(audio->device_id);
 
