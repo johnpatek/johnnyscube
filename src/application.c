@@ -6,7 +6,6 @@ static void application_handle_keyboard_event(
 
 int application_create(application_t *application, const char **error)
 {
-
     *application = calloc(1, sizeof(struct application_s));
 
     audio_create(&(*application)->audio);
@@ -25,7 +24,7 @@ int application_initialize(application_t application, const char *const registry
     graphics_initialize(application->graphics);
 
     application->running = SDL_TRUE;
-    puts("init done");
+
     return 0;
 }
 
@@ -44,7 +43,6 @@ int application_loop(application_t application, const char **error)
                 application->running = SDL_FALSE;
                 break;
             case SDL_KEYDOWN:
-                puts("keydown");
                 application_handle_keyboard_event(
                     application,
                     (SDL_KeyboardEvent *)&event);

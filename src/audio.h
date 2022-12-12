@@ -1,6 +1,5 @@
 #include "common.h"
 
-
 typedef struct 
 {
     Uint8 *buffer;

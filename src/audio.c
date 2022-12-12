@@ -11,35 +11,17 @@ int audio_create(audio_t *audio)
     return 0;
 }
 
-void memprint(uint8_t *buf,uint32_t len)
-{
-    uint8_t byte;
-    uint32_t off;
-    for(off = 0; off < len;off++)
-    {
-        byte = *(buf + off);
-        printf("%d ",(int)byte);
-    }
-    printf("\n");
-}
-
 int audio_initialize(audio_t audio, const char *const registry_directory)
 {
     char absolute_path[256];
     char line_buffer[128];
+    int index;
     FILE *registry_file;
-    wav *element;
 
-    srand(time(0));
+    srand((unsigned int)time(0));
 
-    sprintf(
-        absolute_path,
-        "%s%s%s",
-        registry_directory,
-        PATH_SEPARATOR,
-        ".registry.txt");
+    snprintf(absolute_path, 256, "%s%s%s", registry_directory, PATH_SEPARATOR, ".registry.txt");
 
-    printf("loading registry: %s\n", absolute_path);
     registry_file = fopen(absolute_path, "r");
 
     audio->wavs = NULL;
@@ -48,33 +30,26 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
 
     while (fgets(line_buffer, 127, registry_file) != NULL)
     {
-        sprintf(
-            absolute_path,
-            "%s%s%s",
-            registry_directory,
-            PATH_SEPARATOR,
-            line_buffer);
+        snprintf(absolute_path, 256, "%s%s%s", registry_directory, PATH_SEPARATOR, line_buffer);
 
-        printf("reallocating: %p to %d bytes\n", audio->wavs, (int)sizeof(wav) * (audio->wav_count + 1));
         audio->wavs = realloc(audio->wavs, sizeof(wav) * (audio->wav_count + 1));
-        element = audio->wavs + audio->wav_count;
-        
-        memprint((uint8_t*)audio->wavs,sizeof(wav) * (audio->wav_count + 1));
 
-        printf("loading: %s\n",absolute_path);
+        (audio->wavs + audio->wav_count)->buffer = NULL;
+        (audio->wavs + audio->wav_count)->size = 0;
+
         SDL_LoadWAV(
             absolute_path,
             &audio->spec,
-            &element->buffer,
-            &element->size);
-
-        memprint((uint8_t*)audio->wavs,sizeof(wav) * (audio->wav_count + 1));
+            &((audio->wavs + audio->wav_count)->buffer),
+            &((audio->wavs + audio->wav_count)->size));
 
         audio->wav_count++;
     }
 
+    fclose(registry_file);
+
     audio->spec.callback = audio_callback;
-    audio->spec.userdata = (void*)audio;
+    audio->spec.userdata = (void *)audio;
 
     audio->device_id = SDL_OpenAudioDevice(NULL, 0, &audio->spec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
@@ -104,14 +79,19 @@ int audio_destroy(audio_t audio)
     int wav_index;
 
     SDL_PauseAudioDevice(audio->device_id, SDL_TRUE);
+
     SDL_CloseAudioDevice(audio->device_id);
 
     for (wav_index = 0; wav_index < audio->wav_count; wav_index++)
     {
         SDL_FreeWAV((audio->wavs + wav_index)->buffer);
     }
+
     free(audio->wavs);
+
     free(audio);
+
+    return 0;
 }
 
 void audio_callback(

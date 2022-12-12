@@ -3,7 +3,7 @@ add_executable(cube main.c application.c application.h audio.c audio.h graphics.
 if(WIN32)
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/SDL/include "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\um")
 target_link_directories(cube PRIVATE "C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.19041.0\\um\\x64")
-target_link_libraries(cube SDL3-static SDL3_main GLU32)
+target_link_libraries(cube SDL3-static SDL3_main GLU32 OpenGL32)
 else()
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/SDL/include)
 target_link_libraries(cube SDL3 GLU OpenGL)
