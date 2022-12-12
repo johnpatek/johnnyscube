@@ -1,8 +1,12 @@
 #ifndef COMMON_H
 #define COMMON_H
-
+#ifdef _WIN32
+#include <gl/glu.h>
+#include <gl/gl.h>
+#else
 #include <GL/glu.h>
 #include <GL/gl.h>
+#endif
 #include <SDL3/SDL.h>
 
 #include <math.h>
