@@ -11,12 +11,24 @@ int audio_create(audio_t *audio)
     return 0;
 }
 
+void memprint(uint8_t *buf,uint32_t len)
+{
+    uint8_t byte;
+    uint32_t off;
+    for(off = 0; off < len;off++)
+    {
+        byte = *(buf + off);
+        printf("%d ",(int)byte);
+    }
+    printf("\n");
+}
+
 int audio_initialize(audio_t audio, const char *const registry_directory)
 {
-    const char absolute_path[256];
-    const char line_buffer[256];
-
+    char absolute_path[256];
+    char line_buffer[128];
     FILE *registry_file;
+    wav *element;
 
     srand(time(0));
 
@@ -30,14 +42,12 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
     printf("loading registry: %s\n", absolute_path);
     registry_file = fopen(absolute_path, "r");
 
-    audio->wav_buffers = NULL;
-    audio->wav_sizes = NULL;
+    audio->wavs = NULL;
     audio->wav_count = 0;
+    audio->current = NULL;
 
-    while (fgets(line_buffer, 255, registry_file) != NULL)
+    while (fgets(line_buffer, 127, registry_file) != NULL)
     {
-        assert((1 + SDL_strlen(registry_directory) + SDL_strlen(line_buffer)) < 256);
-
         sprintf(
             absolute_path,
             "%s%s%s",
@@ -45,17 +55,20 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
             PATH_SEPARATOR,
             line_buffer);
 
-        printf("loading WAV: %s\n", absolute_path);
+        printf("reallocating: %p to %d bytes\n", audio->wavs, (int)sizeof(wav) * (audio->wav_count + 1));
+        audio->wavs = realloc(audio->wavs, sizeof(wav) * (audio->wav_count + 1));
+        element = audio->wavs + audio->wav_count;
+        
+        memprint((uint8_t*)audio->wavs,sizeof(wav) * (audio->wav_count + 1));
 
-        audio->wav_buffers = realloc(audio->wav_buffers, sizeof(Uint8 *) * (audio->wav_count + 1));
-
-        audio->wav_sizes = realloc(audio->wav_sizes, sizeof(Uint32) * (audio->wav_count + 1));
-
+        printf("loading: %s\n",absolute_path);
         SDL_LoadWAV(
             absolute_path,
             &audio->spec,
-            (audio->wav_buffers + audio->wav_count),
-            (audio->wav_sizes + audio->wav_count));
+            &element->buffer,
+            &element->size);
+
+        memprint((uint8_t*)audio->wavs,sizeof(wav) * (audio->wav_count + 1));
 
         audio->wav_count++;
     }
@@ -65,7 +78,7 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
 
     audio->device_id = SDL_OpenAudioDevice(NULL, 0, &audio->spec, NULL, SDL_AUDIO_ALLOW_ANY_CHANGE);
 
-    audio->current_wav_buffer = NULL;
+    SDL_PauseAudioDevice(audio->device_id, SDL_FALSE);
 
     return 0;
 }
@@ -74,17 +87,31 @@ int audio_play_random(audio_t audio)
 {
     int random_index;
 
-    SDL_LockMutex(audio->current_wav_mutex);
-    if (audio->current_wav_buffer == NULL)
+    SDL_LockMutex(audio->current_mutex);
+    if (audio->current == NULL)
     {
         random_index = rand() % audio->wav_count;
-        audio->current_wav_buffer = *(audio->wav_buffers + random_index);
-        audio->current_wav_size = *(audio->wav_sizes + random_index);
-        audio->current_wav_offset = 0;
+        audio->current = audio->wavs + random_index;
+        audio->current_offset = 0;
     }
-    SDL_UnlockMutex(audio->current_wav_mutex);
+    SDL_UnlockMutex(audio->current_mutex);
 
     return 0;
+}
+
+int audio_destroy(audio_t audio)
+{
+    int wav_index;
+
+    SDL_PauseAudioDevice(audio->device_id, SDL_TRUE);
+    SDL_CloseAudioDevice(audio->device_id);
+
+    for (wav_index = 0; wav_index < audio->wav_count; wav_index++)
+    {
+        SDL_FreeWAV((audio->wavs + wav_index)->buffer);
+    }
+    free(audio->wavs);
+    free(audio);
 }
 
 void audio_callback(
@@ -93,44 +120,38 @@ void audio_callback(
     int len)
 {
     audio_t audio;
-    Uint32 current_wav_remaining;
+    Uint32 current_remaining;
     Uint32 bytes_needed;
 
     audio = (audio_t)userdata;
     bytes_needed = (Uint32)len;
 
-    SDL_LockMutex(audio->current_wav_mutex);
+    SDL_memset(
+        stream,
+        audio->spec.silence,
+        bytes_needed);
 
-    if (audio->current_wav_buffer != NULL)
+    SDL_LockMutex(audio->current_mutex);
+
+    if (audio->current != NULL)
     {
-        current_wav_remaining = audio->current_wav_size - audio->current_wav_offset;
-        if (current_wav_remaining > bytes_needed)
+        current_remaining = audio->current->size - audio->current_offset;
+        if (current_remaining > bytes_needed)
         {
             SDL_memcpy(
                 stream,
-                audio->current_wav_buffer + audio->current_wav_offset,
+                audio->current->buffer + audio->current_offset,
                 bytes_needed);
-            audio->current_wav_offset += bytes_needed;
-            bytes_needed = 0;
+            audio->current_offset += bytes_needed;
         }
         else
         {
             SDL_memcpy(
                 stream,
-                audio->current_wav_buffer + audio->current_wav_offset,
-                current_wav_remaining);
-            bytes_needed -= current_wav_remaining;
-            audio->current_wav_buffer = NULL;
+                audio->current->buffer + audio->current_offset,
+                current_remaining);
+            audio->current = NULL;
         }
     }
-
-    SDL_UnlockMutex(audio->current_wav_mutex);
-
-    if (bytes_needed > 0)
-    {
-        SDL_memcpy(
-            stream,
-            audio->spec.silence,
-            bytes_needed);
-    }
+    SDL_UnlockMutex(audio->current_mutex);
 }

@@ -1,18 +1,23 @@
 #include "common.h"
 
+
+typedef struct 
+{
+    Uint8 *buffer;
+    Uint32 size;
+} wav;
+
 struct audio_s
 {
     SDL_AudioDeviceID device_id;
     SDL_AudioSpec spec;
 
-    Uint8 ** wav_buffers;
-    Uint32 * wav_sizes;
-    Uint32 wav_count;
+    wav *wavs;
+    int wav_count;
 
-    SDL_mutex *current_wav_mutex;
-    Uint8 * current_wav_buffer;
-    Uint32 current_wav_size;
-    Uint32 current_wav_offset;
+    SDL_mutex *current_mutex;
+    wav *current;
+    uint32_t current_offset;
 };
 typedef struct audio_s *audio_t;
 

@@ -1,4 +1,4 @@
-add_executable(cube main.c)
+add_executable(cube main.c application.c application.h audio.c audio.h graphics.c graphics.h)
 
 if(WIN32)
 target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/SDL/include "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\um")
