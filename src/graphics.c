@@ -97,7 +97,7 @@ int graphics_render(graphics_t graphics)
     glTranslatef(0.0, 0.0, -5.0);
 
     /* Rotate. */
-    glRotatef(angle, 0.0, 1.0, 0.0);
+    glRotatef(angle, 1.0, 1.0, 0.0);
 
     if (graphics->rotating)
     {
