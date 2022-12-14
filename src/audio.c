@@ -46,8 +46,6 @@ int audio_initialize(audio_t audio, const char *const registry_directory)
             &((audio->wavs + audio->wav_count)->buffer),
             &((audio->wavs + audio->wav_count)->size));
 
-        printf("%u\n",(audio->wavs + audio->wav_count)->size);
-
         audio->wav_count++;
     }
 

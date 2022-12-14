@@ -1,55 +1,50 @@
 #include "application.h"
 
+// graphics_create() helper functions
+static int graphics_create_instance(graphics_t graphics);
+static int graphics_create_window(graphics_t graphics);
+static int graphics_create_surface(graphics_t graphics);
+static int graphics_create_physical_device(graphics_t graphics);
+static int graphics_create_queues(graphics_t graphics);
+static int graphics_create_logical_device(graphics_t graphics);
+static int graphics_create_semaphores(graphics_t graphics);
+static int graphics_create_command_pool(graphics_t graphics);
+static int graphics_create_vertex_buffer(graphics_t graphics);
+static int graphics_create_uniform_buffer(graphics_t graphics);
+static int graphics_create_swap_chain(graphics_t graphics);
+static int graphics_create_render_pass(graphics_t graphics);
+static int graphics_create_image_views(graphics_t graphics);
+static int graphics_create_framebuffers(graphics_t graphics);
+static int graphics_create_graphics_pipeline(graphics_t graphics);
+static int graphics_create_descriptor_pool(graphics_t graphics);
+static int graphics_create_descriptor_set(graphics_t graphics);
+static int graphics_create_command_buffers(graphics_t graphics);
+
+// graphics_destroy() helper functions
+static int graphics_destroy_instance(graphics_t graphics);
+static int graphics_destroy_window(graphics_t graphics);
+static int graphics_destroy_surface(graphics_t graphics);
+static int graphics_destroy_physical_device(graphics_t graphics);
+static int graphics_destroy_queues(graphics_t graphics);
+static int graphics_destroy_logical_device(graphics_t graphics);
+static int graphics_destroy_semaphores(graphics_t graphics);
+static int graphics_destroy_command_pool(graphics_t graphics);
+static int graphics_destroy_vertex_buffer(graphics_t graphics);
+static int graphics_destroy_uniform_buffer(graphics_t graphics);
+static int graphics_destroy_swap_chain(graphics_t graphics);
+static int graphics_destroy_render_pass(graphics_t graphics);
+static int graphics_destroy_image_views(graphics_t graphics);
+static int graphics_destroy_framebuffers(graphics_t graphics);
+static int graphics_destroy_graphics_pipeline(graphics_t graphics);
+static int graphics_destroy_descriptor_pool(graphics_t graphics);
+static int graphics_destroy_descriptor_set(graphics_t graphics);
+static int graphics_destroy_command_buffers(graphics_t graphics);
+
+static int graphics_rate_physical_device(VkPhysicalDevice physical_device);
+
 int graphics_create(graphics_t *graphics)
 {
     *graphics = calloc(1, sizeof(struct graphics_s));
-}
-
-int graphics_initialize(graphics_t graphics)
-{
-    SDL_GetCurrentDisplayMode(0, &graphics->display_mode);
-
-    graphics->window = SDL_CreateWindow(
-        "Johnny's Cube",
-        SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED,
-        graphics->display_mode.w,
-        graphics->display_mode.h,
-        SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_OPENGL);
-
-    graphics->gl_context = SDL_GL_CreateContext(
-        graphics->window);
-
-    /* Our shading model--Gouraud (smooth). */
-    glShadeModel(GL_SMOOTH);
-
-    /* Culling. */
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-    glEnable(GL_CULL_FACE);
-
-    glClearColor(0, 0, 0, 0);
-
-    glViewport(
-        0, 0,
-        graphics->display_mode.w,
-        graphics->display_mode.h);
-
-    glMatrixMode(GL_PROJECTION);
-
-    glLoadIdentity();
-
-    gluPerspective(
-        60.0,
-        (GLdouble)graphics->display_mode.w / (GLdouble)graphics->display_mode.h,
-        1.0,
-        1024.0);
-
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    graphics->rotating = SDL_FALSE;
-
-    graphics->rendering = SDL_TRUE;
 
     return 0;
 }
@@ -58,145 +53,117 @@ void graphics_destroy(graphics_t graphics)
 {
     if (graphics != NULL)
     {
-        SDL_GL_DeleteContext(graphics->gl_context);
+        vkDestroySurfaceKHR(graphics->vk_instance, graphics->vk_surface, NULL);
+        vkDestroyInstance(graphics->vk_instance, NULL);
         SDL_DestroyWindow(graphics->window);
         free(graphics);
     }
+    SDL_Vulkan_UnloadLibrary();
+}
+
+int graphics_initialize(graphics_t graphics)
+{
+    const char **instance_extension_names;
+    VkPhysicalDevice *physical_devices;
+
+    size_t instance_extension_count;
+    size_t physical_device_count;
+    size_t physical_device_index;
+
+    instance_extension_names = NULL;
+
+    SDL_Vulkan_LoadLibrary(NULL);
+
+    SDL_GetCurrentDisplayMode(0, &graphics->display_mode);
+
+    graphics->window = SDL_CreateWindow(
+        "Johnny's Cube",
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        graphics->display_mode.w,
+        graphics->display_mode.h,
+        SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_VULKAN);
+
+    SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extension_count, NULL);
+    if (instance_extension_count > 0)
+    {
+        instance_extension_names = (const char **)calloc(instance_extension_count, sizeof(char *));
+        SDL_Vulkan_GetInstanceExtensions(
+            graphics->window,
+            &instance_extension_count,
+            instance_extension_names);
+    }
+
+    const VkInstanceCreateInfo instance_create_info = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .pApplicationInfo = NULL,
+        .enabledLayerCount = 0,
+        .ppEnabledLayerNames = NULL,
+        .enabledExtensionCount = instance_extension_count,
+        .ppEnabledExtensionNames = instance_extension_names,
+    };
+
+    vkCreateInstance(
+        &instance_create_info,
+        NULL,
+        &graphics->vk_instance);
+
+    free(instance_extension_names);
+
+    vkEnumeratePhysicalDevices(graphics->vk_instance, &physical_device_count, NULL);
+
+    physical_devices = (VkPhysicalDevice *)calloc(physical_device_count, sizeof(VkPhysicalDevice));
+
+    vkEnumeratePhysicalDevices(graphics->vk_instance, &physical_device_count, physical_devices);
+
+    for (physical_device_index = 0; physical_device_index < physical_device_count; physical_device_index++)
+    {
+        if (graphics->vk_physical_device == NULL)
+        {
+            if (graphics_rate_physical_device(*(physical_devices + physical_device_index)) > 0)
+            {
+                puts("found GPU");
+                graphics->vk_physical_device = *(physical_devices + physical_device_index);
+            }
+        }
+    }
+
+    if (graphics->vk_physical_device == NULL)
+    {
+        puts("no GPU detected, using CPU");
+        graphics->vk_physical_device = *physical_devices;
+    }
+
+    free(physical_devices);
+
+    SDL_Vulkan_CreateSurface(
+        graphics->window,
+        graphics->vk_instance,
+        &graphics->vk_surface);
+
+    return 0;
 }
 
 int graphics_render(graphics_t graphics)
 {
 
-    static float angle = 0.0f;
+    return 0;
+}
 
-    static GLfloat v0[] = {-1.0f, -1.0f, 1.0f};
-    static GLfloat v1[] = {1.0f, -1.0f, 1.0f};
-    static GLfloat v2[] = {1.0f, 1.0f, 1.0f};
-    static GLfloat v3[] = {-1.0f, 1.0f, 1.0f};
-    static GLfloat v4[] = {-1.0f, -1.0f, -1.0f};
-    static GLfloat v5[] = {1.0f, -1.0f, -1.0f};
-    static GLfloat v6[] = {1.0f, 1.0f, -1.0f};
-    static GLfloat v7[] = {-1.0f, 1.0f, -1.0f};
-    static GLubyte red[] = {255, 0, 0, 255};
-    static GLubyte green[] = {0, 255, 0, 255};
-    static GLubyte blue[] = {0, 0, 255, 255};
-    static GLubyte white[] = {255, 255, 255, 255};
-    static GLubyte yellow[] = {0, 255, 255, 255};
-    static GLubyte black[] = {0, 0, 0, 255};
-    static GLubyte orange[] = {255, 255, 0, 255};
-    static GLubyte purple[] = {255, 0, 255, 0};
+static int graphics_rate_physical_device(VkPhysicalDevice physical_device)
+{
+    int rating;
+    VkPhysicalDeviceProperties physical_device_properties;
 
-    /* Clear the color and depth buffers. */
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    rating = 0;
+    vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
 
-    /* We don't want to modify the projection matrix. */
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    /* Move down the z-axis. */
-    glTranslatef(0.0, 0.0, -5.0);
-
-    /* Rotate. */
-    glRotatef(angle, 0.0, 1.0, 0.0);
-
-    if (graphics->rotating)
+    if (physical_device_properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
     {
-
-        if (++angle > 360.0f)
-        {
-            angle = 0.0f;
-        }
+        rating = 1;
     }
 
-    /* Send our triangle data to the pipeline. */
-    glBegin(GL_TRIANGLES);
-
-    glColor4ubv(red);
-    glVertex3fv(v0);
-    glColor4ubv(green);
-    glVertex3fv(v1);
-    glColor4ubv(blue);
-    glVertex3fv(v2);
-
-    glColor4ubv(red);
-    glVertex3fv(v0);
-    glColor4ubv(blue);
-    glVertex3fv(v2);
-    glColor4ubv(white);
-    glVertex3fv(v3);
-
-    glColor4ubv(green);
-    glVertex3fv(v1);
-    glColor4ubv(black);
-    glVertex3fv(v5);
-    glColor4ubv(orange);
-    glVertex3fv(v6);
-
-    glColor4ubv(green);
-    glVertex3fv(v1);
-    glColor4ubv(orange);
-    glVertex3fv(v6);
-    glColor4ubv(blue);
-    glVertex3fv(v2);
-
-    glColor4ubv(black);
-    glVertex3fv(v5);
-    glColor4ubv(yellow);
-    glVertex3fv(v4);
-    glColor4ubv(purple);
-    glVertex3fv(v7);
-
-    glColor4ubv(black);
-    glVertex3fv(v5);
-    glColor4ubv(purple);
-    glVertex3fv(v7);
-    glColor4ubv(orange);
-    glVertex3fv(v6);
-
-    glColor4ubv(yellow);
-    glVertex3fv(v4);
-    glColor4ubv(red);
-    glVertex3fv(v0);
-    glColor4ubv(white);
-    glVertex3fv(v3);
-
-    glColor4ubv(yellow);
-    glVertex3fv(v4);
-    glColor4ubv(white);
-    glVertex3fv(v3);
-    glColor4ubv(purple);
-    glVertex3fv(v7);
-
-    glColor4ubv(white);
-    glVertex3fv(v3);
-    glColor4ubv(blue);
-    glVertex3fv(v2);
-    glColor4ubv(orange);
-    glVertex3fv(v6);
-
-    glColor4ubv(white);
-    glVertex3fv(v3);
-    glColor4ubv(orange);
-    glVertex3fv(v6);
-    glColor4ubv(purple);
-    glVertex3fv(v7);
-
-    glColor4ubv(green);
-    glVertex3fv(v1);
-    glColor4ubv(red);
-    glVertex3fv(v0);
-    glColor4ubv(yellow);
-    glVertex3fv(v4);
-
-    glColor4ubv(green);
-    glVertex3fv(v1);
-    glColor4ubv(yellow);
-    glVertex3fv(v4);
-    glColor4ubv(black);
-    glVertex3fv(v5);
-
-    glEnd();
-
-    SDL_GL_SwapWindow(graphics->window);
-    return 0;
+    return rating;
 }

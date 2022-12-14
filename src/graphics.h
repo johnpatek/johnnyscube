@@ -1,18 +1,20 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
-#include <GL/glu.h>
-#include <GL/gl.h>
-#include <SDL3/SDL.h>
+#include "common.h"
 
 struct graphics_s
 {
     SDL_DisplayMode display_mode;
     SDL_Window *window;
-    SDL_GLContext gl_context;
-    SDL_Thread *render_thread;
-    SDL_bool rendering;
-    SDL_bool rotating;
+
+    VkInstance vk_instance;
+    VkSurfaceKHR vk_surface;
+    VkPhysicalDevice vk_physical_device;
+    VkDevice vk_device;
+    VkQueue vk_graphics_queue;
+    VkQueue vk_present_queue;
+
 };
 typedef struct graphics_s *graphics_t;
 
