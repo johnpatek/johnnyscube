@@ -2,15 +2,30 @@
 
 int main(int argc, const char **argv)
 {
-    if (argc > 1)
-    {
-        application_t application;
-        const char *error;
+    int status;
+    application_t application;
 
-        application_create(&application, &error);
-        application_initialize(application, argv[1], &error);
-        application_loop(application, &error);
-        application_destroy(application);
+    status = CUBE_SUCCESS;
+    application = NULL;
+    
+    if(argc > 1)
+    {
+        status = application_create(&application,argv[1]);
+        if(status != CUBE_SUCCESS)
+        {
+            fprintf(stderr,"main: failed to create new application\n");
+            goto done;
+        }
+
+        status = application_loop(application);
+        if(status != CUBE_SUCCESS)
+        {
+            fprintf(stderr,"main: failed to start application loop\n");
+            goto done;
+        }
     }
+
+done:
+    application_destroy(application);
     return 0;
 }

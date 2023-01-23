@@ -5,8 +5,9 @@ static void audio_callback(
     Uint8 *stream,
     int len);
 
-int audio_create(audio_t *audio)
+int audio_create(audio_t *audio, const char * resource_directory)
 {
+    int status = CUBE_SUCCESS;
     *audio = calloc(1, sizeof(struct audio_s));
     return 0;
 }

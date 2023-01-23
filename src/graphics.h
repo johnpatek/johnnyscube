@@ -11,6 +11,8 @@ struct graphics_s
     VkInstance vk_instance;
     VkSurfaceKHR vk_surface;
     VkPhysicalDevice vk_physical_device;
+    int vk_graphics_queue_index;
+    int vk_present_queue_index;
     VkDevice vk_device;
     VkQueue vk_graphics_queue;
     VkQueue vk_present_queue;
@@ -18,9 +20,7 @@ struct graphics_s
 };
 typedef struct graphics_s *graphics_t;
 
-int graphics_create(graphics_t *graphics);
-
-int graphics_initialize(graphics_t graphics);
+int graphics_create(graphics_t *graphics, const char * const resource_directory);
 
 int graphics_render(graphics_t graphics);
 

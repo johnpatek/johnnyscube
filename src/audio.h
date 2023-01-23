@@ -20,9 +20,13 @@ struct audio_s
 };
 typedef struct audio_s *audio_t;
 
-int audio_create(audio_t* create);
+int audio_create(
+    audio_t* create, 
+    const char * resource_directory);
 
-int audio_initialize(audio_t audio, const char * const registry_directory);
+int audio_initialize(
+    audio_t audio, 
+    const char * const registry_directory);
 
 int audio_play_random(audio_t audio);
 

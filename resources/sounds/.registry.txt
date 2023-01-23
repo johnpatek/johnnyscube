@@ -1,2 +1,0 @@
-bark.wav
-truck.wav

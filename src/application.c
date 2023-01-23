@@ -4,31 +4,51 @@ static void application_handle_keyboard_event(
     application_t application,
     const SDL_KeyboardEvent *const keyboard_event);
 
-int application_create(application_t *application, const char **error)
+int application_create(
+    application_t *application,
+    const char *const resource_directory)
 {
-    *application = calloc(1, sizeof(struct application_s));
+    int status;
+    application_t new_application;
 
-    audio_create(&(*application)->audio);
+    status = CUBE_SUCCESS;
 
-    graphics_create(&(*application)->graphics);
+    if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
+    {
+        fprintf(stderr,"application_create: failed to initialize SDL(%s)\n", SDL_GetError());
+        goto error;
+    }
 
+    new_application = calloc(1, sizeof(struct application_s));
+    if (new_application == NULL)
+    {
+        fprintf(stderr, "application_create: failed to allocate new application\n");
+        goto error;
+    }
+
+    if (audio_create(&(new_application)->audio, resource_directory) != CUBE_SUCCESS)
+    {
+        fprintf(stderr, "application_create: failed to create audio subsystem\n");
+        goto error;
+    }
+
+    if (graphics_create(&(new_application)->graphics, resource_directory) != CUBE_SUCCESS)
+    {
+        fprintf(stderr, "application_create: failed to create graphics subsystem\n");
+        goto error;
+    }
+
+    *application = new_application;
+
+    goto done;
+error:
+    status = CUBE_FAILURE;
+    application_destroy(new_application);
+done:
     return 0;
 }
 
-int application_initialize(application_t application, const char *const registry_directory, const char **error)
-{
-    SDL_Init(SDL_INIT_EVERYTHING);
-
-    audio_initialize(application->audio, registry_directory);
-
-    graphics_initialize(application->graphics);
-
-    application->running = SDL_TRUE;
-
-    return 0;
-}
-
-int application_loop(application_t application, const char **error)
+int application_loop(application_t application)
 {
     SDL_Event event;
 
@@ -71,13 +91,12 @@ static void application_handle_keyboard_event(
 {
     if (keyboard_event->repeat == 0)
     {
-        if(keyboard_event->keysym.scancode == SDL_SCANCODE_ESCAPE)
+        if (keyboard_event->keysym.scancode == SDL_SCANCODE_ESCAPE)
         {
             application->running = SDL_FALSE;
         }
         else
         {
-            application->graphics->rotating = !application->graphics->rotating;
             audio_play_random(application->audio);
         }
     }
