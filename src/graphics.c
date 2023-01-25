@@ -412,7 +412,7 @@ int graphics_create_logical_device(graphics_t graphics)
     device_create_info.pNext = NULL;
     device_create_info.ppEnabledLayerNames = NULL;
     device_create_info.enabledLayerCount = 0;
-
+    
     vk_result = vkCreateDevice(graphics->vk_physical_device, &device_create_info, NULL, &graphics->vk_device);
     if (vk_result != VK_SUCCESS)
     {
