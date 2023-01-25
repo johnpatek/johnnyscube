@@ -1,3 +1,6 @@
+#ifndef AUDIO_H
+#define AUDIO_H
+
 #include "common.h"
 
 typedef struct 
@@ -31,3 +34,5 @@ int audio_initialize(
 int audio_play_random(audio_t audio);
 
 int audio_destroy(audio_t audio);
+
+#endif

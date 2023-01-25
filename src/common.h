@@ -27,10 +27,4 @@
 #define PATH_SEPARATOR "/"
 #endif
 
-void f()
-{
-    struct dirent *d;
-    
-}
-
 #endif
