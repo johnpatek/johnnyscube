@@ -65,7 +65,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     status = (graphics != NULL) ? CUBE_SUCCESS : CUBE_FAILURE;
     if (status != CUBE_SUCCESS)
     {
-        fputs("graphics_create: invalid graphics handle\n", stderr);
+        fputs("graphics_create: inva!= SDL_TRUElid graphics handle\n", stderr);
         goto error;
     }
 
@@ -164,7 +164,7 @@ int graphics_create_window(graphics_t graphics)
         SDL_WINDOWPOS_UNDEFINED,
         display_mode.w,
         display_mode.h,
-        SDL_WINDOW_FULLSCREEN);
+        SDL_WINDOW_FULLSCREEN | SDL_WINDOW_VULKAN);
 
     if (new_window == NULL)
     {
@@ -185,7 +185,7 @@ int graphics_create_instance(graphics_t graphics)
 {
     int status;
     unsigned int instance_extention_count;
-    char **instance_extension_names;
+    const char **instance_extension_names;
     VkApplicationInfo application_info;
     VkInstanceCreateInfo instance_create_info;
     VkResult create_instance_result;
@@ -193,7 +193,7 @@ int graphics_create_instance(graphics_t graphics)
     status = CUBE_SUCCESS;
     instance_extension_names = NULL;
 
-    if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, NULL) < 0)
+    if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, NULL) != SDL_TRUE)
     {
         fprintf(stderr, "graphics_create_instance: first call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
         goto error;
@@ -201,14 +201,14 @@ int graphics_create_instance(graphics_t graphics)
 
     if (instance_extention_count > 0)
     {
-        instance_extension_names = (char **)calloc(instance_extention_count, sizeof(char *));
+        instance_extension_names = calloc(instance_extention_count, sizeof(char *));
         if (instance_extension_names == NULL)
         {
             fputs("graphics_create_instance: failed to allocate instance extension names\n", stderr);
             goto error;
         }
 
-        if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, instance_extension_names) < 0)
+        if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, instance_extension_names) != SDL_TRUE)
         {
             fprintf(stderr, "graphics_create_instance: second call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
             goto error;
