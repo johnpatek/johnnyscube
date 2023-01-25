@@ -22,7 +22,7 @@ struct graphics_s
     VkSwapchainKHR vk_swapchain;
     VkExtent2D vk_swapchain_size;
 
-    size_t vk_image_count;
+    uint32_t vk_image_count;
     VkImage *vk_images;
     VkImageView *vk_image_views;
 
@@ -43,7 +43,7 @@ struct graphics_s
 
     VkFence *vk_fences;
     
-    size_t vk_current_index;
+    uint32_t vk_current_index;
 };
 typedef struct graphics_s *graphics_t;
 

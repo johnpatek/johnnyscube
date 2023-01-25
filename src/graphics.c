@@ -468,7 +468,7 @@ int graphics_create_swap_chain(graphics_t graphics)
         goto error;
     }
 
-    vk_result = vkGetPhysicalDeviceSurfaceFormatsKHR(graphics->vk_physical_device, graphics->vk_surface, &surface_format_count, &surface_formats);
+    vk_result = vkGetPhysicalDeviceSurfaceFormatsKHR(graphics->vk_physical_device, graphics->vk_surface, &surface_format_count, surface_formats);
     if (vk_result != VK_SUCCESS)
     {
         fprintf(stderr, "graphics_create_swap_chain: second call to vkGetPhysicalDeviceSurfaceFormatsKHR failed(%d)\n", vk_result);
@@ -484,8 +484,8 @@ int graphics_create_swap_chain(graphics_t graphics)
     graphics->vk_surface_format = *surface_formats;
 
     SDL_Vulkan_GetDrawableSize(graphics->window, &drawable_width, &drawable_height);
-    drawable_width = CLAMP(drawable_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
-    drawable_height = CLAMP(drawable_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
+    drawable_width = CLAMP((uint32_t)drawable_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+    drawable_height = CLAMP((uint32_t)drawable_height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
 
     swapchain_size.width = drawable_width;
     swapchain_size.height = drawable_height;
@@ -519,7 +519,7 @@ int graphics_create_swap_chain(graphics_t graphics)
     swapchain_create_info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     swapchain_create_info.clipped = VK_TRUE;
 
-    vk_result = vkCreateSwapchainKHR(graphics->vk_device, &swapchain_create_info, NULL, *&graphics->vk_swapchain);
+    vk_result = vkCreateSwapchainKHR(graphics->vk_device, &swapchain_create_info, NULL, &graphics->vk_swapchain);
     if (vk_result != VK_SUCCESS)
     {
         fprintf(stderr, "graphics_create_swap_chain: vkCreateSwapchainKHR failed(%d)\n", vk_result);
@@ -565,7 +565,7 @@ done:
 int graphics_create_image_views(graphics_t graphics)
 {
     int status;
-    int image_index;
+    uint32_t image_index;
     VkResult vk_result;
 
     status = CUBE_SUCCESS;
@@ -692,10 +692,10 @@ int graphics_create_depth_stencil(graphics_t graphics)
 
     vkGetImageMemoryRequirements(
         graphics->vk_device,
-        &graphics->vk_depth_image,
+        graphics->vk_depth_image,
         &memory_requirements);
 
-    vkGetPhysicalDeviceMemoryProperties(graphics->vk_device, &memory_properties);
+    vkGetPhysicalDeviceMemoryProperties(graphics->vk_physical_device, &memory_properties);
 
     memory_type = memory_properties.memoryTypeCount;
     memory_type_index = 0;
@@ -1242,7 +1242,7 @@ int graphics_render_queue_submit(graphics_t graphics)
         graphics->vk_graphics_queue,
         1,
         &queue_submit_info,
-        &graphics->vk_fences[graphics->vk_current_index]);
+        graphics->vk_fences[graphics->vk_current_index]);
     if (vk_result != VK_SUCCESS)
     {
         fprintf(stderr, "graphics_render_queue_submit: vkQueueSubmit failed(%d)\n", vk_result);
