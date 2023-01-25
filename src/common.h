@@ -10,6 +10,7 @@
 #else
 // TODO: remove opengl/add unix specific
 #include <dirent.h>
+#include <errno.h>
 #endif
 
 #include <SDL3/SDL.h>

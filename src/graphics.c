@@ -184,7 +184,7 @@ done:
 int graphics_create_instance(graphics_t graphics)
 {
     int status;
-    size_t instance_extention_count;
+    unsigned int instance_extention_count;
     char **instance_extension_names;
     VkApplicationInfo application_info;
     VkInstanceCreateInfo instance_create_info;
@@ -204,7 +204,7 @@ int graphics_create_instance(graphics_t graphics)
         instance_extension_names = (char **)calloc(instance_extention_count, sizeof(char *));
         if (instance_extension_names == NULL)
         {
-            fprintf(stderr,"graphics_create_instance: failed to allocate instance extension names(%s)\n", errno);
+            fputs("graphics_create_instance: failed to allocate instance extension names\n", stderr);
             goto error;
         }
 
