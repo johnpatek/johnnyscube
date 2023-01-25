@@ -81,7 +81,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     status = FUNC(*graphics);                                    \
     if (status != CUBE_SUCCESS)                                  \
     {                                                            \
-        fputs("graphics_create: "## #FUNC##" failed\n", stderr); \
+        fputs("graphics_create: " #FUNC " failed\n", stderr); \
         goto error;                                              \
     }
 
@@ -115,7 +115,7 @@ int graphics_render(graphics_t graphics)
     status = FUNC(graphics);                                     \
     if (status != CUBE_SUCCESS)                                  \
     {                                                            \
-        fputs("graphics_render: "## #FUNC##" failed\n", stderr); \
+        fputs("graphics_render: " #FUNC " failed\n", stderr); \
         goto error;                                              \
     }
 
