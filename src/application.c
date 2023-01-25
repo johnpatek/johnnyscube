@@ -52,6 +52,8 @@ int application_loop(application_t application)
 {
     SDL_Event event;
 
+    application->running = SDL_TRUE;
+
     while (application->running == SDL_TRUE)
     {
         graphics_render(application->graphics);

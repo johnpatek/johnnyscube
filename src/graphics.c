@@ -382,30 +382,34 @@ int graphics_create_logical_device(graphics_t graphics)
     int status;
     VkResult vk_result;
     VkDeviceQueueCreateInfo queue_create_infos[2];
+    uint32_t unique_queue_indices;
     VkDeviceCreateInfo device_create_info;
 
     status = CUBE_SUCCESS;
+    unique_queue_indices = 1;
 
     SDL_memset(&queue_create_infos[0], 0, sizeof(VkDeviceQueueCreateInfo));
     queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queue_create_infos[0].queueFamilyIndex = graphics->vk_graphics_queue_index;
     queue_create_infos[0].queueCount = 1;
-    queue_create_infos[0].pQueuePriorities = queue_priorities;
+    queue_create_infos[0].pQueuePriorities = &queue_priorities[0];
     queue_create_infos[0].flags = 0;
     queue_create_infos[0].pNext = NULL;
-
-    SDL_memset(&queue_create_infos[1], 0, sizeof(VkDeviceQueueCreateInfo));
-    queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_infos[1].queueFamilyIndex = graphics->vk_present_queue_index;
-    queue_create_infos[1].queueCount = 1;
-    queue_create_infos[1].pQueuePriorities = queue_priorities;
-    queue_create_infos[1].flags = 0;
-    queue_create_infos[1].pNext = NULL;
-
+    if(graphics->vk_graphics_queue_index != graphics->vk_present_queue_index)
+    {
+        SDL_memset(&queue_create_infos[1], 0, sizeof(VkDeviceQueueCreateInfo));
+        queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_infos[1].queueFamilyIndex = graphics->vk_present_queue_index;
+        queue_create_infos[1].queueCount = 1;
+        queue_create_infos[1].pQueuePriorities = &queue_priorities[0];
+        queue_create_infos[1].flags = 0;
+        queue_create_infos[1].pNext = NULL;
+        unique_queue_indices++;
+    }
     SDL_memset(&device_create_info, 0, sizeof(VkDeviceCreateInfo));
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     device_create_info.pQueueCreateInfos = (VkDeviceQueueCreateInfo *)queue_create_infos;
-    device_create_info.queueCreateInfoCount = 2;
+    device_create_info.queueCreateInfoCount = unique_queue_indices;
     device_create_info.ppEnabledExtensionNames = device_extensions;
     device_create_info.enabledExtensionCount = 1;
     device_create_info.pEnabledFeatures = &device_features;
@@ -873,7 +877,7 @@ int graphics_create_framebuffers(graphics_t graphics)
     status = CUBE_SUCCESS;
 
     graphics->vk_framebuffers = calloc(graphics->vk_image_count, sizeof(VkFramebuffer));
-    if (graphics->vk_framebuffers)
+    if (graphics->vk_framebuffers == NULL)
     {
         fputs("graphics_create_framebuffers: failed to allocate framebuffers\n", stderr);
         goto error;
