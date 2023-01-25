@@ -276,11 +276,11 @@ int graphics_create_physical_device(graphics_t graphics)
 {
     int status;
     VkResult vk_result;
-    size_t physical_device_count;
+    uint32_t physical_device_count;
     VkPhysicalDevice *physical_devices;
-    size_t queue_family_property_count;
+    uint32_t queue_family_property_count;
     VkQueueFamilyProperties *queue_family_properties;
-    size_t queue_family_property_index;
+    uint32_t queue_family_property_index;
     VkQueueFamilyProperties queue_family;
     VkBool32 queue_present_support;
 
@@ -295,7 +295,7 @@ int graphics_create_physical_device(graphics_t graphics)
     vk_result = vkEnumeratePhysicalDevices(graphics->vk_instance, &physical_device_count, NULL);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_physical_device: first call to vkEnumeratePhysicalDevices failed(%d)\n");
+        fprintf(stderr, "graphics_create_physical_device: first call to vkEnumeratePhysicalDevices failed(%d)\n", vk_result);
         goto error;
     }
 
@@ -309,7 +309,7 @@ int graphics_create_physical_device(graphics_t graphics)
     vk_result = vkEnumeratePhysicalDevices(graphics->vk_instance, &physical_device_count, physical_devices);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_physical_device: second call to vkEnumeratePhysicalDevices failed(%d)\n");
+        fprintf(stderr, "graphics_create_physical_device: second call to vkEnumeratePhysicalDevices failed(%d)\n", vk_result);
         goto error;
     }
 
@@ -380,7 +380,6 @@ int graphics_create_logical_device(graphics_t graphics)
     const float queue_priorities[] = {1.0f};
     const VkPhysicalDeviceFeatures device_features = {.samplerAnisotropy = VK_TRUE};
     int status;
-    uint32_t queue_family_indices[2];
     VkResult vk_result;
     VkDeviceQueueCreateInfo queue_create_infos[2];
     VkDeviceCreateInfo device_create_info;
@@ -391,7 +390,7 @@ int graphics_create_logical_device(graphics_t graphics)
     queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queue_create_infos[0].queueFamilyIndex = graphics->vk_graphics_queue_index;
     queue_create_infos[0].queueCount = 1;
-    queue_create_infos[0].pQueuePriorities = &queue_priorities;
+    queue_create_infos[0].pQueuePriorities = queue_priorities;
     queue_create_infos[0].flags = 0;
     queue_create_infos[0].pNext = NULL;
 
@@ -399,7 +398,7 @@ int graphics_create_logical_device(graphics_t graphics)
     queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
     queue_create_infos[1].queueFamilyIndex = graphics->vk_present_queue_index;
     queue_create_infos[1].queueCount = 1;
-    queue_create_infos[1].pQueuePriorities = &queue_priorities;
+    queue_create_infos[1].pQueuePriorities = queue_priorities;
     queue_create_infos[1].flags = 0;
     queue_create_infos[1].pNext = NULL;
 
@@ -437,12 +436,12 @@ int graphics_create_swap_chain(graphics_t graphics)
     int status;
     VkResult vk_result;
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    size_t surface_format_count;
+    uint32_t surface_format_count;
     VkSurfaceFormatKHR *surface_formats;
     int drawable_width;
     int drawable_height;
     VkExtent2D swapchain_size;
-    size_t image_count;
+    uint32_t image_count;
     VkSwapchainCreateInfoKHR swapchain_create_info;
 
     status = CUBE_SUCCESS;
@@ -632,8 +631,8 @@ int graphics_create_depth_stencil(graphics_t graphics)
     VkResult vk_result;
     VkMemoryRequirements memory_requirements;
     VkPhysicalDeviceMemoryProperties memory_properties;
-    size_t memory_type_index;
-    size_t memory_type;
+    uint32_t memory_type_index;
+    uint32_t memory_type;
     VkMemoryAllocateInfo memory_allocate_info;
     VkImageViewCreateInfo depth_image_view_create_info;
 
@@ -868,7 +867,7 @@ done:
 int graphics_create_framebuffers(graphics_t graphics)
 {
     int status;
-    size_t frame_buffer_index;
+    uint32_t frame_buffer_index;
     VkResult vk_result;
 
     status = CUBE_SUCCESS;
@@ -1022,7 +1021,7 @@ done:
 int graphics_create_fences(graphics_t graphics)
 {
     int status;
-    size_t fence_index;
+    uint32_t fence_index;
     VkResult vk_result;
     VkFenceCreateInfo fence_create_info = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
