@@ -77,12 +77,12 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
         goto error;
     }
 
-#define GRAPHICS_CREATE(FUNC)                                    \
-    status = FUNC(*graphics);                                    \
-    if (status != CUBE_SUCCESS)                                  \
-    {                                                            \
+#define GRAPHICS_CREATE(FUNC)                                 \
+    status = FUNC(*graphics);                                 \
+    if (status != CUBE_SUCCESS)                               \
+    {                                                         \
         fputs("graphics_create: " #FUNC " failed\n", stderr); \
-        goto error;                                              \
+        goto error;                                           \
     }
 
     GRAPHICS_CREATE(graphics_create_window)
@@ -111,12 +111,12 @@ int graphics_render(graphics_t graphics)
 {
     int status;
 
-#define GRAPHICS_RENDER(FUNC)                                    \
-    status = FUNC(graphics);                                     \
-    if (status != CUBE_SUCCESS)                                  \
-    {                                                            \
+#define GRAPHICS_RENDER(FUNC)                                 \
+    status = FUNC(graphics);                                  \
+    if (status != CUBE_SUCCESS)                               \
+    {                                                         \
         fputs("graphics_render: " #FUNC " failed\n", stderr); \
-        goto error;                                              \
+        goto error;                                           \
     }
 
     GRAPHICS_RENDER(graphics_render_aquire_image)
@@ -185,7 +185,7 @@ int graphics_create_instance(graphics_t graphics)
 {
     int status;
     size_t instance_extention_count;
-    const char **instance_extension_names;
+    char **instance_extension_names;
     VkApplicationInfo application_info;
     VkInstanceCreateInfo instance_create_info;
     VkResult create_instance_result;
@@ -199,17 +199,24 @@ int graphics_create_instance(graphics_t graphics)
         goto error;
     }
 
-    instance_extension_names = (const char **)calloc(instance_extention_count, sizeof(char *));
-    if (instance_extension_names == NULL)
+    if (instance_extention_count > 0)
     {
-        fputs("graphics_create_instance: failed to allocate instance extension names", stderr);
-        goto error;
-    }
+        instance_extension_names = (char **)calloc(instance_extention_count, sizeof(char *));
+        if (instance_extension_names == NULL)
+        {
+            fprintf(stderr,"graphics_create_instance: failed to allocate instance extension names(%s)\n", errno);
+            goto error;
+        }
 
-    if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, instance_extension_names) < 0)
+        if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, instance_extension_names) < 0)
+        {
+            fprintf(stderr, "graphics_create_instance: second call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
+            goto error;
+        }
+    }
+    else
     {
-        fprintf(stderr, "graphics_create_instance: second call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
-        goto error;
+        instance_extension_names = NULL;
     }
 
     SDL_memset(&application_info, 0, sizeof(VkApplicationInfo));
