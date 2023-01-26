@@ -28,11 +28,6 @@ struct graphics_s
     VkImage *vk_images;
     VkImageView *vk_image_views;
 
-    VkFormat vk_depth_format;
-    VkImage vk_depth_image;
-    VkDeviceMemory vk_depth_image_memory;
-    VkImageView vk_depth_image_view;
-
     VkRenderPass vk_render_pass;
     VkShaderModule vk_vertex_shader;
     VkShaderModule vk_fragment_shader;

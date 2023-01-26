@@ -15,7 +15,6 @@ static int graphics_create_vertex_buffer(graphics_t graphics) { return 0; }
 static int graphics_create_uniform_buffer(graphics_t graphics) { return 0; }
 static int graphics_create_swap_chain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
-static int graphics_create_depth_stencil(graphics_t graphics);
 static int graphics_create_shader_modules(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
 static int graphics_create_pipeline(graphics_t graphics);
@@ -97,7 +96,6 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     GRAPHICS_CREATE(graphics_create_logical_device)
     GRAPHICS_CREATE(graphics_create_swap_chain)
     GRAPHICS_CREATE(graphics_create_image_views)
-    GRAPHICS_CREATE(graphics_create_depth_stencil)
     GRAPHICS_CREATE(graphics_create_shader_modules)
     GRAPHICS_CREATE(graphics_create_render_pass)
     GRAPHICS_CREATE(graphics_create_pipeline)
@@ -620,167 +618,6 @@ done:
     return status;
 }
 
-int graphics_create_depth_stencil(graphics_t graphics)
-{
-    const VkFormat depth_formats[] = {
-        VK_FORMAT_D32_SFLOAT_S8_UINT,
-        VK_FORMAT_D32_SFLOAT,
-        VK_FORMAT_D24_UNORM_S8_UINT,
-        VK_FORMAT_D16_UNORM_S8_UINT,
-        VK_FORMAT_D16_UNORM,
-    };
-    const int depth_format_count = sizeof(depth_formats) / sizeof(depth_formats[0]);
-
-    int status;
-    int depth_format_index;
-    VkFormatProperties format_properties;
-    VkFormat depth_format;
-    VkImageCreateInfo depth_image_create_info;
-    VkResult vk_result;
-    VkMemoryRequirements memory_requirements;
-    VkPhysicalDeviceMemoryProperties memory_properties;
-    uint32_t memory_type_index;
-    uint32_t memory_type;
-    VkMemoryAllocateInfo memory_allocate_info;
-    VkImageViewCreateInfo depth_image_view_create_info;
-
-    status = CUBE_SUCCESS;
-    depth_format = VK_FORMAT_UNDEFINED;
-
-    depth_format_index = 0;
-    while ((depth_format == VK_FORMAT_UNDEFINED) && (depth_format_index < depth_format_count))
-    {
-        vkGetPhysicalDeviceFormatProperties(
-            graphics->vk_physical_device,
-            depth_formats[depth_format_index],
-            &format_properties);
-        if (format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
-        {
-            depth_format = depth_formats[depth_format_index];
-        }
-        else
-        {
-            depth_format_index++;
-        }
-    }
-
-    if (depth_format == VK_FORMAT_UNDEFINED)
-    {
-        fputs("graphics_create_depth_stencil: failed to find supported depth format\n", stderr);
-        goto error;
-    }
-
-    graphics->vk_depth_format = depth_format;
-
-    SDL_memset(&depth_image_create_info, 0, sizeof(VkImageCreateInfo));
-    depth_image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    depth_image_create_info.imageType = VK_IMAGE_TYPE_2D;
-    depth_image_create_info.mipLevels = 1;
-    depth_image_create_info.arrayLayers = 1;
-    depth_image_create_info.format = graphics->vk_depth_format;
-    depth_image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    depth_image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    depth_image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    depth_image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    depth_image_create_info.extent.width = graphics->vk_swapchain_size.width;
-    depth_image_create_info.extent.height = graphics->vk_swapchain_size.height;
-    depth_image_create_info.extent.depth = 1;
-
-    vk_result = vkCreateImage(
-        graphics->vk_device,
-        &depth_image_create_info,
-        NULL,
-        &graphics->vk_depth_image);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_depth_stencil: vkCreateImage failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vkGetImageMemoryRequirements(
-        graphics->vk_device,
-        graphics->vk_depth_image,
-        &memory_requirements);
-
-    vkGetPhysicalDeviceMemoryProperties(graphics->vk_physical_device, &memory_properties);
-
-    memory_type = memory_properties.memoryTypeCount;
-    memory_type_index = 0;
-    while ((memory_type == memory_properties.memoryTypeCount) && (memory_type_index < memory_properties.memoryTypeCount))
-    {
-        if (((memory_type_index & memory_requirements.memoryTypeBits) != 0) && ((memory_properties.memoryTypes[memory_type_index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
-        {
-            memory_type = memory_type_index;
-        }
-        else
-        {
-            memory_type_index++;
-        }
-    }
-
-    if (memory_type_index == memory_properties.memoryTypeCount)
-    {
-        fputs("graphics_create_depth_stencil: failed to find memory type\n", stderr);
-        goto error;
-    }
-
-    SDL_memset(&memory_allocate_info, 0, sizeof(VkMemoryAllocateInfo));
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.allocationSize = memory_requirements.size;
-    memory_allocate_info.memoryTypeIndex = memory_type;
-
-    vk_result = vkAllocateMemory(
-        graphics->vk_device,
-        &memory_allocate_info,
-        NULL,
-        &graphics->vk_depth_image_memory);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_depth_stencil: vkAllocateMemory failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vkBindImageMemory(
-        graphics->vk_device,
-        graphics->vk_depth_image,
-        graphics->vk_depth_image_memory,
-        0);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_depth_stencil: vkBindImageMemory failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    SDL_memset(&depth_image_view_create_info, 0, sizeof(VkImageViewCreateInfo));
-    depth_image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    depth_image_view_create_info.image = graphics->vk_depth_image;
-    depth_image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    depth_image_view_create_info.format = graphics->vk_depth_format;
-    depth_image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    depth_image_view_create_info.subresourceRange.baseMipLevel = 0;
-    depth_image_view_create_info.subresourceRange.levelCount = 1;
-    depth_image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    depth_image_view_create_info.subresourceRange.layerCount = 1;
-
-    vk_result = vkCreateImageView(
-        graphics->vk_device,
-        &depth_image_view_create_info,
-        NULL,
-        &graphics->vk_depth_image_view);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_depth_stencil: vkCreateImageView failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
 int graphics_create_shader_modules(graphics_t graphics)
 {
     int status;
@@ -907,17 +744,6 @@ int graphics_create_render_pass(graphics_t graphics)
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         },
-        // depth attachment
-        {
-            .format = graphics->vk_depth_format,
-            .samples = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        },
     };
 
     VkAttachmentReference color_reference = {
@@ -925,16 +751,11 @@ int graphics_create_render_pass(graphics_t graphics)
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
-    VkAttachmentReference depth_reference = {
-        .attachment = 1,
-        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    };
-
     VkSubpassDescription subpass_description = {
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_reference,
-        .pDepthStencilAttachment = &depth_reference,
+        .pDepthStencilAttachment = NULL,
         .inputAttachmentCount = 0,
         .pInputAttachments = NULL,
         .preserveAttachmentCount = 0,
@@ -1132,13 +953,12 @@ int graphics_create_framebuffers(graphics_t graphics)
     {
         VkImageView frame_buffer_attachments[] = {
             graphics->vk_image_views[frame_buffer_index],
-            graphics->vk_depth_image_view,
         };
 
         VkFramebufferCreateInfo frame_buffer_create_info = {
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = graphics->vk_render_pass,
-            .attachmentCount = 2,
+            .attachmentCount = 1,
             .pAttachments = (VkImageView *)frame_buffer_attachments,
             .width = graphics->vk_swapchain_size.width,
             .height = graphics->vk_swapchain_size.height,
