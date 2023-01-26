@@ -16,6 +16,7 @@ static int graphics_create_uniform_buffer(graphics_t graphics) { return 0; }
 static int graphics_create_swap_chain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_depth_stencil(graphics_t graphics);
+static int graphics_create_shader_modules(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
 static int graphics_create_pipeline(graphics_t graphics);
 static int graphics_create_framebuffers(graphics_t graphics);
@@ -60,6 +61,9 @@ static void graphics_destroy_descriptor_pool(graphics_t graphics);
 static void graphics_destroy_descriptor_set(graphics_t graphics);
 static void graphics_destroy_command_buffers(graphics_t graphics);
 
+// misc. utility functions
+static int graphics_util_read_file(const char *path, void **data, size_t *size);
+
 int graphics_create(graphics_t *graphics, const char *const resource_directory)
 {
     int status;
@@ -67,7 +71,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     status = (graphics != NULL) ? CUBE_SUCCESS : CUBE_FAILURE;
     if (status != CUBE_SUCCESS)
     {
-        fputs("graphics_create: inva!= SDL_TRUElid graphics handle\n", stderr);
+        fputs("graphics_create: invalid graphics handle\n", stderr);
         goto error;
     }
 
@@ -78,6 +82,8 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
         fputs("graphics_create: failed to allocate graphics\n", stderr);
         goto error;
     }
+
+    (*graphics)->resource_directory = resource_directory;
 
 #define GRAPHICS_CREATE(FUNC)                                 \
     status = FUNC(*graphics);                                 \
@@ -779,6 +785,116 @@ done:
     return status;
 }
 
+int graphics_create_shader_modules(graphics_t graphics)
+{
+    int status;
+    char vertex_shader_path[256];
+    void *vertex_shader_code;
+    size_t vertex_shader_size;
+    char fragment_shader_path[256];
+    void *fragment_shader_code;
+    size_t fragment_shader_size;
+    VkResult vk_result;
+
+    status = CUBE_SUCCESS;
+    vertex_shader_code = NULL;
+    fragment_shader_code = NULL;
+
+    sprintf(
+        vertex_shader_path,
+        "%s%s%s%s%s",
+        graphics->resource_directory,
+        PATH_SEPARATOR,
+        "shaders",
+        PATH_SEPARATOR,
+        "vert.spv");
+
+    sprintf(
+        fragment_shader_path,
+        "%s%s%s%s%s",
+        graphics->resource_directory,
+        PATH_SEPARATOR,
+        "shaders",
+        PATH_SEPARATOR,
+        "frag.spv");
+
+    if (graphics_util_read_file(
+            vertex_shader_path,
+            &vertex_shader_code,
+            &vertex_shader_size) != CUBE_SUCCESS)
+    {
+        fputs("graphics_create_shader_modules: first call to graphics_util_read_file() failed\n", stderr);
+        goto error;
+    }
+
+    if (graphics_util_read_file(
+            fragment_shader_path,
+            &fragment_shader_code,
+            &fragment_shader_size) != CUBE_SUCCESS)
+    {
+        fputs("graphics_create_shader_modules: second call to graphics_util_read_file() failed\n", stderr);
+        goto error;
+    }
+
+    VkShaderModuleCreateInfo vertex_shader_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pCode = (const uint32_t *)vertex_shader_code,
+        .codeSize = vertex_shader_size,
+        .flags = 0,
+        .pNext = NULL,
+    };
+
+    VkShaderModuleCreateInfo fragment_shader_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pCode = (const uint32_t *)fragment_shader_code,
+        .codeSize = fragment_shader_size,
+        .flags = 0,
+        .pNext = NULL,
+    };
+
+    vk_result = vkCreateShaderModule(
+        graphics->vk_device,
+        &vertex_shader_create_info,
+        NULL,
+        &graphics->vk_vertex_shader);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(
+            stderr,
+            "graphics_create_shader_modules: first call to vkCreateShaderModule failed(%d)\n",
+            vk_result);
+        goto error;
+    }
+
+    vk_result = vkCreateShaderModule(
+        graphics->vk_device,
+        &fragment_shader_create_info,
+        NULL,
+        &graphics->vk_fragment_shader);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(
+            stderr,
+            "graphics_create_shader_modules: second call to vkCreateShaderModule failed(%d)\n",
+            vk_result);
+        goto error;
+    }
+
+    goto done;
+error:
+    status = CUBE_FAILURE;
+done:
+    if (vertex_shader_code != NULL)
+    {
+        free(vertex_shader_code);
+    }
+    if (fragment_shader_code != NULL)
+    {
+        free(fragment_shader_code);
+    }
+    return status;
+}
+
 int graphics_create_render_pass(graphics_t graphics)
 {
     int status;
@@ -867,6 +983,87 @@ int graphics_create_render_pass(graphics_t graphics)
 error:
     status = CUBE_FAILURE;
 done:
+    return status;
+}
+
+int graphics_create_pipeline(graphics_t graphics)
+{
+    VkPipelineShaderStageCreateInfo shader_stages[] = {
+        // vertex shader
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = graphics->vk_vertex_shader,
+            .pName = "main",
+        },
+        // fragment shader
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = graphics->vk_fragment_shader,
+            .pName = "main",
+        },
+    };
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 0,
+        .vertexAttributeDescriptionCount = 0,
+    };
+    VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = VK_FALSE,
+    };
+    VkPipelineViewportStateCreateInfo viewport_state = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount = 1,
+    };
+    VkPipelineRasterizationStateCreateInfo rasterization_state_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .lineWidth = 1.0f,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
+    };
+    VkPipelineMultisampleStateCreateInfo multisample_state_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = VK_FALSE,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+    };
+    VkPipelineColorBlendAttachmentState color_blend_attachment = {
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = VK_FALSE,
+    };
+    VkPipelineColorBlendStateCreateInfo color_blend_state_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments = &color_blend_attachment,
+        .blendConstants = {0.0f, 0.0f, 0.0f, 0.0f},
+    };
+    VkDynamicState dynamic_states[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+    };
+    VkPipelineDynamicStateCreateInfo dynamic_state_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = 2,
+        .pDynamicStates = &dynamic_states[0],
+    };
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 0,
+        .pushConstantRangeCount = 0,
+    };
+    int status;
+
+    status = CUBE_SUCCESS;
+
     return status;
 }
 
@@ -1311,7 +1508,7 @@ done:
 
 int graphics_render_record_commands(graphics_t graphics)
 {
-    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};    
+    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     VkCommandBufferBeginInfo command_buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
@@ -1335,5 +1532,62 @@ int graphics_render_record_commands(graphics_t graphics)
     status = CUBE_SUCCESS;
 
     command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
+}
 
+int graphics_util_read_file(const char *path, void **data, size_t *size)
+{
+    int status;
+    FILE *file;
+
+    status = CUBE_SUCCESS;
+    file = NULL;
+    *data = NULL;
+    *size = 0;
+
+#if defined(_WIN32)
+    fopen_s(&file, path, "r");
+#else
+    file = fopen(path, "r");
+#endif
+    if (file == NULL)
+    {
+        fputs("graphics_util_read_file: fopen() failed\n", stderr);
+        goto error;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0)
+    {
+        fputs("graphics_util_read_file: first fseek() failed\n", stderr);
+        goto error;
+    }
+
+    *size = (size_t)ftell(file);
+    *data = malloc(*size);
+    if (*data == NULL)
+    {
+        fputs("graphics_util_read_file: malloc() failed\n", stderr);
+        goto error;
+    }
+
+    if (fseek(file, 0, SEEK_SET) != 0)
+    {
+        fputs("graphics_util_read_file: second fseek() failed\n", stderr);
+        goto error;
+    }
+
+    fread(*data, 1, *size, file);
+
+    goto done;
+error:
+    status = CUBE_FAILURE;
+    if (data != NULL)
+    {
+        free(data);
+    }
+done:
+    if (file != NULL)
+    {
+        fclose(file);
+    }
+    return status;
 }

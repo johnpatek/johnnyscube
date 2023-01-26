@@ -5,6 +5,8 @@
 
 struct graphics_s
 {
+    const char *resource_directory;
+
     SDL_DisplayMode display_mode;
     SDL_Window *window;
 
@@ -32,6 +34,8 @@ struct graphics_s
     VkImageView vk_depth_image_view;
 
     VkRenderPass vk_render_pass;
+    VkShaderModule vk_vertex_shader;
+    VkShaderModule vk_fragment_shader;
     VkPipeline vk_graphics_pipeline;
     VkFramebuffer *vk_framebuffers;
 
