@@ -9,10 +9,6 @@ static int graphics_create_instance(graphics_t graphics);
 static int graphics_create_surface(graphics_t graphics);
 static int graphics_create_physical_device(graphics_t graphics);
 static int graphics_create_logical_device(graphics_t graphics);
-// TODO: unused
-static int graphics_create_vertex_buffer(graphics_t graphics) { return 0; }
-// TODO: unused
-static int graphics_create_uniform_buffer(graphics_t graphics) { return 0; }
 static int graphics_create_swap_chain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_shader_modules(graphics_t graphics);
@@ -21,14 +17,7 @@ static int graphics_create_pipeline(graphics_t graphics);
 static int graphics_create_framebuffers(graphics_t graphics);
 static int graphics_create_command_pool(graphics_t graphics);
 static int graphics_create_command_buffers(graphics_t graphics);
-static int graphics_create_semaphores(graphics_t graphics);
-static int graphics_create_fences(graphics_t graphics);
-// TODO: unused
-static int graphics_create_graphics_pipeline(graphics_t graphics) { return 0; }
-// TODO: unused
-static int graphics_create_descriptor_pool(graphics_t graphics) { return 0; }
-// TODO: unused
-static int graphics_create_descriptor_set(graphics_t graphics) { return 0; }
+static int graphics_create_sync_objects(graphics_t graphics);
 
 // graphics_render() helper functions;
 static int graphics_render_aquire_image(graphics_t graphics);
@@ -64,7 +53,7 @@ static VkBool32 graphics_util_debug_callback(
     const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
     void *pUserData)
 {
-    frintf(stderr, "%s\n", pCallbackData->pMessage);
+    fprintf(stderr, "%s\n", pCallbackData->pMessage);
     return VK_FALSE;
 }
 
@@ -111,8 +100,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     GRAPHICS_CREATE(graphics_create_framebuffers)
     GRAPHICS_CREATE(graphics_create_command_pool)
     GRAPHICS_CREATE(graphics_create_command_buffers)
-    GRAPHICS_CREATE(graphics_create_semaphores)
-    GRAPHICS_CREATE(graphics_create_fences)
+    GRAPHICS_CREATE(graphics_create_sync_objects)
 
     goto done;
 error:
@@ -794,7 +782,7 @@ int graphics_create_render_pass(graphics_t graphics)
 
     VkRenderPassCreateInfo render_pass_create_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = 2,
+        .attachmentCount = 1,
         .pAttachments = (VkAttachmentDescription *)attachments,
         .subpassCount = 1,
         .pSubpasses = &subpass_description,
@@ -846,7 +834,7 @@ int graphics_create_pipeline(graphics_t graphics)
         .vertexAttributeDescriptionCount = 0,
     };
     VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
         .primitiveRestartEnable = VK_FALSE,
     };
@@ -1065,14 +1053,16 @@ done:
     return status;
 }
 
-int graphics_create_semaphores(graphics_t graphics)
+int graphics_create_sync_objects(graphics_t graphics)
 {
     int status;
     VkResult vk_result;
     VkSemaphoreCreateInfo semaphore_create_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
+    };
+    VkFenceCreateInfo fence_create_info = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
     status = CUBE_SUCCESS;
@@ -1099,46 +1089,18 @@ int graphics_create_semaphores(graphics_t graphics)
         goto error;
     }
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
-int graphics_create_fences(graphics_t graphics)
-{
-    int status;
-    uint32_t fence_index;
-    VkResult vk_result;
-    VkFenceCreateInfo fence_create_info = {
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .pNext = NULL,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-    };
-
-    status = CUBE_SUCCESS;
-
-    graphics->vk_fences = calloc(graphics->vk_image_count, sizeof(VkFence));
-    if (graphics->vk_fences == NULL)
+    vk_result = vkCreateFence(
+        graphics->vk_device,
+        &fence_create_info,
+        NULL,
+        &graphics->vk_fence);
+    if (vk_result != VK_SUCCESS)
     {
-        fputs("graphics_create_fences: failed to allocate fences", stderr);
+        fprintf(stderr, "graphics_create_command_buffers: second call to vkAllocateCommandBuffers failed(%d)\n", vk_result);
         goto error;
     }
 
-    for (fence_index = 0; fence_index < graphics->vk_image_count; fence_index++)
-    {
-        vk_result = vkCreateFence(
-            graphics->vk_device,
-            &fence_create_info,
-            NULL,
-            &graphics->vk_fences[fence_index]);
-        if (vk_result != VK_SUCCESS)
-        {
-            fprintf(stderr, "graphics_create_fences: vkCreateFence failed(%d)\n", vk_result);
-            goto error;
-        }
-    }
+    
 
     goto done;
 error:
@@ -1154,6 +1116,24 @@ int graphics_render_aquire_image(graphics_t graphics)
 
     status = CUBE_SUCCESS;
 
+    vk_result = vkWaitForFences(
+        graphics->vk_device,
+        1,
+        &graphics->vk_fence,
+        VK_TRUE, UINT64_MAX);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_render_aquire_image: vkWaitForFences failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    vk_result = vkResetFences(graphics->vk_device, 1, &graphics->vk_fence);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_render_aquire_image: vkResetFences failed(%d)\n", vk_result);
+        goto error;
+    }
+
     vk_result = vkAcquireNextImageKHR(
         graphics->vk_device,
         graphics->vk_swapchain,
@@ -1164,17 +1144,6 @@ int graphics_render_aquire_image(graphics_t graphics)
     if (vk_result != VK_SUCCESS)
     {
         fprintf(stderr, "graphics_render_aquire_image: vkAcquireNextImageKHR failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vk_result = vkWaitForFences(
-        graphics->vk_device,
-        1,
-        &graphics->vk_fences[graphics->vk_current_index],
-        VK_FALSE, UINT64_MAX);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_aquire_image: vkWaitForFences failed(%d)\n", vk_result);
         goto error;
     }
 
@@ -1302,19 +1271,19 @@ int graphics_render_queue_submit(graphics_t graphics)
     VkSubmitInfo queue_submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &graphics->vk_render_semaphore,
+        .pWaitSemaphores = &graphics->vk_image_semaphore,
         .pWaitDstStageMask = &wait_dest_stage_mask,
         .commandBufferCount = 1,
         .pCommandBuffers = &command_buffer,
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &graphics->vk_image_semaphore,
+        .pSignalSemaphores = &graphics->vk_render_semaphore,
     };
 
     vk_result = vkQueueSubmit(
         graphics->vk_graphics_queue,
         1,
         &queue_submit_info,
-        graphics->vk_fences[graphics->vk_current_index]);
+        graphics->vk_fence);
     if (vk_result != VK_SUCCESS)
     {
         fprintf(stderr, "graphics_render_queue_submit: vkQueueSubmit failed(%d)\n", vk_result);
@@ -1341,7 +1310,7 @@ int graphics_render_queue_present(graphics_t graphics)
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &graphics->vk_image_semaphore,
+        .pWaitSemaphores = &graphics->vk_render_semaphore,
         .swapchainCount = 1,
         .pSwapchains = &graphics->vk_swapchain,
         .pImageIndices = &graphics->vk_current_index,
@@ -1379,7 +1348,7 @@ int graphics_util_read_file(const char *path, void **data, size_t *size)
     *size = 0;
 
 #if defined(_WIN32)
-    fopen_s(&file, path, "r");
+    fopen_s(&file, path, "rb");
 #else
     file = fopen(path, "r");
 #endif

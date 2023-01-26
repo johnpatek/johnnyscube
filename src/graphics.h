@@ -40,8 +40,7 @@ struct graphics_s
 
     VkSemaphore vk_image_semaphore;
     VkSemaphore vk_render_semaphore;
-
-    VkFence *vk_fences;
+    VkFence vk_fence;
     
     uint32_t vk_current_index;
 };
