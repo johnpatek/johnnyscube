@@ -58,6 +58,15 @@ static void graphics_destroy_command_buffers(graphics_t graphics);
 
 // misc. utility functions
 static int graphics_util_read_file(const char *path, void **data, size_t *size);
+static VkBool32 graphics_util_debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+    void *pUserData)
+{
+    frintf(stderr, "%s\n", pCallbackData->pMessage);
+    return VK_FALSE;
+}
 
 int graphics_create(graphics_t *graphics, const char *const resource_directory)
 {
@@ -185,6 +194,15 @@ done:
 
 int graphics_create_instance(graphics_t graphics)
 {
+    const char *validation_layers[] = {
+        "VK_LAYER_KHRONOS_validation",
+    };
+    VkDebugUtilsMessengerCreateInfoEXT debug_message_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = graphics_util_debug_callback,
+    };
     int status;
     unsigned int instance_extention_count;
     const char **instance_extension_names;
@@ -232,10 +250,11 @@ int graphics_create_instance(graphics_t graphics)
     SDL_memset(&instance_create_info, 0, sizeof(VkInstanceCreateInfo));
     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_create_info.pApplicationInfo = &application_info;
-    instance_create_info.enabledLayerCount = 0;
-    instance_create_info.ppEnabledLayerNames = NULL;
+    instance_create_info.enabledLayerCount = 1;
+    instance_create_info.ppEnabledLayerNames = validation_layers;
     instance_create_info.enabledExtensionCount = instance_extention_count;
     instance_create_info.ppEnabledExtensionNames = instance_extension_names;
+    instance_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debug_message_create_info;
 
     create_instance_result = vkCreateInstance(&instance_create_info, NULL, &graphics->vk_instance);
     if (create_instance_result != VK_SUCCESS)
