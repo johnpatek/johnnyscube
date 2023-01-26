@@ -26,25 +26,6 @@ static int graphics_render_record_commands(graphics_t graphics);
 static int graphics_render_queue_submit(graphics_t graphics);
 static int graphics_render_queue_present(graphics_t graphics);
 
-// graphics_destroy() helper functions
-static void graphics_destroy_window(graphics_t graphics);
-static void graphics_destroy_instance(graphics_t graphics);
-static void graphics_destroy_surface(graphics_t graphics);
-static void graphics_destroy_physical_device(graphics_t graphics);
-static void graphics_destroy_logical_device(graphics_t graphics);
-static void graphics_destroy_semaphores(graphics_t graphics);
-static void graphics_destroy_command_pool(graphics_t graphics);
-static void graphics_destroy_vertex_buffer(graphics_t graphics);
-static void graphics_destroy_uniform_buffer(graphics_t graphics);
-static void graphics_destroy_swap_chain(graphics_t graphics);
-static void graphics_destroy_render_pass(graphics_t graphics);
-static void graphics_destroy_image_views(graphics_t graphics);
-static void graphics_destroy_framebuffers(graphics_t graphics);
-static void graphics_destroy_graphics_pipeline(graphics_t graphics);
-static void graphics_destroy_descriptor_pool(graphics_t graphics);
-static void graphics_destroy_descriptor_set(graphics_t graphics);
-static void graphics_destroy_command_buffers(graphics_t graphics);
-
 // misc. utility functions
 static int graphics_util_read_file(const char *path, void **data, size_t *size);
 static VkBool32 graphics_util_debug_callback(
@@ -136,9 +117,107 @@ done:
 
 void graphics_destroy(graphics_t graphics)
 {
+    uint32_t frame_index;
     if (graphics != NULL)
     {
-
+        if (graphics->vk_fence != NULL)
+        {
+            vkDestroyFence(graphics->vk_device, graphics->vk_fence, NULL);
+        }
+        if (graphics->vk_render_semaphore != NULL)
+        {
+            vkDestroySemaphore(
+                graphics->vk_device,
+                graphics->vk_render_semaphore,
+                NULL);
+        }
+        if (graphics->vk_image_semaphore != NULL)
+        {
+            vkDestroySemaphore(
+                graphics->vk_device,
+                graphics->vk_image_semaphore,
+                NULL);
+        }
+        if (graphics->vk_command_buffers != NULL)
+        {
+            vkFreeCommandBuffers(
+                graphics->vk_device,
+                graphics->vk_command_pool,
+                graphics->vk_image_count,
+                graphics->vk_command_buffers);
+        }
+        if (graphics->vk_command_pool != NULL)
+        {
+            vkDestroyCommandPool(
+                graphics->vk_device,
+                graphics->vk_command_pool,
+                NULL);
+        }
+        if (graphics->vk_framebuffers != NULL)
+        {
+            for (frame_index = 0; frame_index < graphics->vk_image_count; frame_index++)
+            {
+                vkDestroyFramebuffer(
+                    graphics->vk_device,
+                    graphics->vk_framebuffers[frame_index],
+                    NULL);
+            }
+            free(graphics->vk_framebuffers);
+        }
+        if (graphics->vk_graphics_pipeline != NULL)
+        {
+            vkDestroyPipeline(
+                graphics->vk_device,
+                graphics->vk_graphics_pipeline,
+                NULL);
+        }
+        if (graphics->vk_render_pass != NULL)
+        {
+            vkDestroyRenderPass(
+                graphics->vk_device,
+                graphics->vk_render_pass,
+                NULL);
+        }
+        if (graphics->vk_image_views != NULL)
+        {
+            for (frame_index = 0; frame_index < graphics->vk_image_count; frame_index++)
+            {
+                vkDestroyImageView(
+                    graphics->vk_device,
+                    graphics->vk_image_views[frame_index],
+                    NULL);
+            }
+            free(graphics->vk_image_views);
+        }
+        if (graphics->vk_images != NULL)
+        {
+            free(graphics->vk_images);
+        }
+        if (graphics->vk_swapchain != NULL)
+        {
+            vkDestroySwapchainKHR(
+                graphics->vk_device,
+                graphics->vk_swapchain,
+                NULL);
+        }
+        if (graphics->vk_device != NULL)
+        {
+            vkDestroyDevice(graphics->vk_device, NULL);
+        }
+        if (graphics->vk_surface != NULL)
+        {
+            vkDestroySurfaceKHR(
+                graphics->vk_instance,
+                graphics->vk_surface,
+                NULL);
+        }
+        if (graphics->vk_instance != NULL)
+        {
+            vkDestroyInstance(
+                graphics->vk_instance,
+                NULL);
+        }
+        SDL_DestroyWindow(graphics->window);
         free(graphics);
     }
 }
@@ -938,6 +1017,7 @@ error:
 done:
     vkDestroyShaderModule(graphics->vk_device, graphics->vk_fragment_shader, NULL);
     vkDestroyShaderModule(graphics->vk_device, graphics->vk_vertex_shader, NULL);
+    vkDestroyPipelineLayout(graphics->vk_device, pipeline_layout, NULL);
     return status;
 }
 
@@ -1099,8 +1179,6 @@ int graphics_create_sync_objects(graphics_t graphics)
         fprintf(stderr, "graphics_create_command_buffers: second call to vkAllocateCommandBuffers failed(%d)\n", vk_result);
         goto error;
     }
-
-    
 
     goto done;
 error:

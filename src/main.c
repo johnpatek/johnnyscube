@@ -1,6 +1,6 @@
 #include "application.h"
 
-int main(int argc, const char **argv)
+int main(int argc, char ** argv)
 {
     int status;
     application_t application;
