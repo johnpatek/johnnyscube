@@ -35,10 +35,6 @@ static int graphics_create_descriptor_set(graphics_t graphics) { return 0; }
 static int graphics_render_aquire_image(graphics_t graphics);
 static int graphics_render_reset_commands(graphics_t graphics);
 static int graphics_render_record_commands(graphics_t graphics);
-static int graphics_render_begin_commands(graphics_t graphics);
-static int graphics_render_begin_pass(graphics_t graphics);
-static int graphics_render_end_pass(graphics_t graphics);
-static int graphics_render_end_commands(graphics_t graphics);
 static int graphics_render_queue_submit(graphics_t graphics);
 static int graphics_render_queue_present(graphics_t graphics);
 
@@ -86,6 +82,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     (*graphics)->resource_directory = resource_directory;
 
 #define GRAPHICS_CREATE(FUNC)                                 \
+    puts(#FUNC);                                              \
     status = FUNC(*graphics);                                 \
     if (status != CUBE_SUCCESS)                               \
     {                                                         \
@@ -101,7 +98,9 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     GRAPHICS_CREATE(graphics_create_swap_chain)
     GRAPHICS_CREATE(graphics_create_image_views)
     GRAPHICS_CREATE(graphics_create_depth_stencil)
+    GRAPHICS_CREATE(graphics_create_shader_modules)
     GRAPHICS_CREATE(graphics_create_render_pass)
+    GRAPHICS_CREATE(graphics_create_pipeline)
     GRAPHICS_CREATE(graphics_create_framebuffers)
     GRAPHICS_CREATE(graphics_create_command_pool)
     GRAPHICS_CREATE(graphics_create_command_buffers)
@@ -129,10 +128,7 @@ int graphics_render(graphics_t graphics)
 
     GRAPHICS_RENDER(graphics_render_aquire_image)
     GRAPHICS_RENDER(graphics_render_reset_commands)
-    GRAPHICS_RENDER(graphics_render_begin_commands)
-    GRAPHICS_RENDER(graphics_render_begin_pass)
-    GRAPHICS_RENDER(graphics_render_end_pass)
-    GRAPHICS_RENDER(graphics_render_end_commands)
+    GRAPHICS_RENDER(graphics_render_record_commands)
     GRAPHICS_RENDER(graphics_render_queue_submit)
     GRAPHICS_RENDER(graphics_render_queue_present)
 
@@ -1061,9 +1057,59 @@ int graphics_create_pipeline(graphics_t graphics)
         .pushConstantRangeCount = 0,
     };
     int status;
+    VkResult vk_result;
+    VkPipelineLayout pipeline_layout;
 
     status = CUBE_SUCCESS;
 
+    vk_result = vkCreatePipelineLayout(
+        graphics->vk_device,
+        &pipeline_layout_info,
+        NULL,
+        &pipeline_layout);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkCreatePipelineLayout failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    VkGraphicsPipelineCreateInfo pipeline_create_info = {
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = 2,
+        .pStages = shader_stages,
+        .pVertexInputState = &vertex_input_info,
+        .pInputAssemblyState = &input_assembly_info,
+        .pViewportState = &viewport_state,
+        .pRasterizationState = &rasterization_state_info,
+        .pMultisampleState = &multisample_state_info,
+        .pColorBlendState = &color_blend_state_info,
+        .pDynamicState = &dynamic_state_info,
+        .layout = pipeline_layout,
+        .renderPass = graphics->vk_render_pass,
+        .subpass = 0,
+        .basePipelineHandle = VK_NULL_HANDLE,
+    };
+
+    vk_result = vkCreateGraphicsPipelines(
+        graphics->vk_device,
+        VK_NULL_HANDLE,
+        1,
+        &pipeline_create_info,
+        NULL,
+        &graphics->vk_graphics_pipeline);
+
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkCreatePipelines failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    goto done;
+error:
+    status = CUBE_FAILURE;
+done:
+    vkDestroyShaderModule(graphics->vk_device, graphics->vk_fragment_shader, NULL);
+    vkDestroyShaderModule(graphics->vk_device, graphics->vk_vertex_shader, NULL);
     return status;
 }
 
@@ -1324,99 +1370,76 @@ done:
     return status;
 }
 
-int graphics_render_begin_commands(graphics_t graphics)
+int graphics_render_record_commands(graphics_t graphics)
 {
-    const VkCommandBufferBeginInfo command_buffer_begin_info = {
+    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    VkCommandBufferBeginInfo command_buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+        .pNext = NULL,
+        .pInheritanceInfo = NULL,
+    };
+    VkRenderPassBeginInfo render_pass_begin_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .clearValueCount = 1,
+        .pClearValues = &clear_color,
+        .framebuffer = graphics->vk_framebuffers[graphics->vk_current_index],
+        .renderPass = graphics->vk_render_pass,
+        .renderArea = {
+            .extent = graphics->vk_swapchain_size,
+            .offset = {0, 0},
+        },
+    };
+    VkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)graphics->vk_swapchain_size.width,
+        .height = (float)graphics->vk_swapchain_size.height,
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    VkRect2D scissor = {
+        .offset = {0, 0},
+        .extent = graphics->vk_swapchain_size,
     };
     int status;
     VkCommandBuffer command_buffer;
     VkResult vk_result;
 
     status = CUBE_SUCCESS;
+
     command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
 
     vk_result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_render_begin_commands: vkBeginCommandBuffer failed(%d)\n", vk_result);
+        fprintf(
+            stderr,
+            "graphics_render_record_commands: vkBeginCommandBuffer failed(%d)\n",
+            vk_result);
         goto error;
     }
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
-int graphics_render_begin_pass(graphics_t graphics)
-{
-    const VkClearValue render_pass_clear_values[] = {
-        {
-            .color = {0.0f, 0.0f, 0.0f, 1.0f},
-            .depthStencil = {1.0f, 0},
-        },
-    };
-    const VkRenderPassBeginInfo render_pass_begin_info = {
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass = graphics->vk_render_pass,
-        .renderArea = {
-            .offset = {0, 0},
-            .extent = graphics->vk_swapchain_size,
-        },
-        .clearValueCount = 1,
-        .pClearValues = (VkClearValue *)render_pass_clear_values,
-    };
-    const VkCommandBufferBeginInfo command_buffer_begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-    };
-    int status;
-    VkCommandBuffer command_buffer;
-
-    status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-    if (command_buffer == VK_NULL_HANDLE)
-    {
-        puts("problem finding command buffer");
-        return CUBE_FAILURE;
-    }
-
-    vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
+    vkCmdBeginRenderPass(
+        command_buffer,
+        &render_pass_begin_info,
+        VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(
+        command_buffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        graphics->vk_graphics_pipeline);
+    vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+    vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
     vkCmdEndRenderPass(command_buffer);
-
-    return status;
-}
-
-int graphics_render_end_pass(graphics_t graphics)
-{
-    int status;
-    VkCommandBuffer command_buffer;
-
-    status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-
-    // vkCmdEndRenderPass(command_buffer);
-
-    return status;
-}
-
-int graphics_render_end_commands(graphics_t graphics)
-{
-    int status;
-    VkCommandBuffer command_buffer;
-    VkResult vk_result;
-
-    status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
 
     vk_result = vkEndCommandBuffer(command_buffer);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_render_end_commands: vkEndCommandBuffer failed(%d)\n", vk_result);
+        fprintf(
+            stderr,
+            "graphics_render_record_commands: vkEndCommandBuffer failed(%d)\n",
+            vk_result);
         goto error;
     }
 
@@ -1504,34 +1527,6 @@ error:
     status = CUBE_FAILURE;
 done:
     return status;
-}
-
-int graphics_render_record_commands(graphics_t graphics)
-{
-    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    VkCommandBufferBeginInfo command_buffer_begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pNext = NULL,
-        .pInheritanceInfo = NULL,
-    };
-    VkRenderPassBeginInfo render_pass_begin_info = {
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .clearValueCount = 1,
-        .pClearValues = &clear_color,
-        .framebuffer = graphics->vk_framebuffers[graphics->vk_current_index],
-        .renderPass = graphics->vk_render_pass,
-        .renderArea = {
-            .extent = graphics->vk_swapchain_size,
-            .offset = {0, 0},
-        },
-    };
-    int status;
-    VkCommandBuffer command_buffer;
-
-    status = CUBE_SUCCESS;
-
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
 }
 
 int graphics_util_read_file(const char *path, void **data, size_t *size)
