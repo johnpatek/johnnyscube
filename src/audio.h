@@ -27,10 +27,6 @@ int audio_create(
     audio_t* create, 
     const char * resource_directory);
 
-int audio_initialize(
-    audio_t audio, 
-    const char * const registry_directory);
-
 int audio_play_random(audio_t audio);
 
 int audio_destroy(audio_t audio);

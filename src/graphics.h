@@ -32,6 +32,7 @@ struct graphics_s
     VkImageView vk_depth_image_view;
 
     VkRenderPass vk_render_pass;
+    VkPipeline vk_graphics_pipeline;
     VkFramebuffer *vk_framebuffers;
 
     VkCommandPool vk_command_pool;

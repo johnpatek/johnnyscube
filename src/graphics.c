@@ -17,6 +17,7 @@ static int graphics_create_swap_chain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_depth_stencil(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
+static int graphics_create_pipeline(graphics_t graphics);
 static int graphics_create_framebuffers(graphics_t graphics);
 static int graphics_create_command_pool(graphics_t graphics);
 static int graphics_create_command_buffers(graphics_t graphics);
@@ -32,6 +33,7 @@ static int graphics_create_descriptor_set(graphics_t graphics) { return 0; }
 // graphics_render() helper functions;
 static int graphics_render_aquire_image(graphics_t graphics);
 static int graphics_render_reset_commands(graphics_t graphics);
+static int graphics_render_record_commands(graphics_t graphics);
 static int graphics_render_begin_commands(graphics_t graphics);
 static int graphics_render_begin_pass(graphics_t graphics);
 static int graphics_render_end_pass(graphics_t graphics);
@@ -395,7 +397,7 @@ int graphics_create_logical_device(graphics_t graphics)
     queue_create_infos[0].pQueuePriorities = &queue_priorities[0];
     queue_create_infos[0].flags = 0;
     queue_create_infos[0].pNext = NULL;
-    if(graphics->vk_graphics_queue_index != graphics->vk_present_queue_index)
+    if (graphics->vk_graphics_queue_index != graphics->vk_present_queue_index)
     {
         SDL_memset(&queue_create_infos[1], 0, sizeof(VkDeviceQueueCreateInfo));
         queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -416,7 +418,7 @@ int graphics_create_logical_device(graphics_t graphics)
     device_create_info.pNext = NULL;
     device_create_info.ppEnabledLayerNames = NULL;
     device_create_info.enabledLayerCount = 0;
-    
+
     vk_result = vkCreateDevice(graphics->vk_physical_device, &device_create_info, NULL, &graphics->vk_device);
     if (vk_result != VK_SUCCESS)
     {
@@ -1179,8 +1181,15 @@ int graphics_render_begin_pass(graphics_t graphics)
 
     status = CUBE_SUCCESS;
     command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
+    if (command_buffer == VK_NULL_HANDLE)
+    {
+        puts("problem finding command buffer");
+        return CUBE_FAILURE;
+    }
 
     vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdEndRenderPass(command_buffer);
 
     return status;
 }
@@ -1193,7 +1202,7 @@ int graphics_render_end_pass(graphics_t graphics)
     status = CUBE_SUCCESS;
     command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
 
-    vkCmdEndRenderPass(command_buffer);
+    // vkCmdEndRenderPass(command_buffer);
 
     return status;
 }
@@ -1298,4 +1307,33 @@ error:
     status = CUBE_FAILURE;
 done:
     return status;
+}
+
+int graphics_render_record_commands(graphics_t graphics)
+{
+    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};    
+    VkCommandBufferBeginInfo command_buffer_begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+        .pNext = NULL,
+        .pInheritanceInfo = NULL,
+    };
+    VkRenderPassBeginInfo render_pass_begin_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .clearValueCount = 1,
+        .pClearValues = &clear_color,
+        .framebuffer = graphics->vk_framebuffers[graphics->vk_current_index],
+        .renderPass = graphics->vk_render_pass,
+        .renderArea = {
+            .extent = graphics->vk_swapchain_size,
+            .offset = {0, 0},
+        },
+    };
+    int status;
+    VkCommandBuffer command_buffer;
+
+    status = CUBE_SUCCESS;
+
+    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
+
 }
