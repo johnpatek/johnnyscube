@@ -1379,12 +1379,10 @@ int graphics_render_queue_present(graphics_t graphics)
 {
     const VkPipelineStageFlags wait_dest_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
     int status;
-    VkCommandBuffer command_buffer;
     VkResult vk_result;
 
     status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-
+    
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
