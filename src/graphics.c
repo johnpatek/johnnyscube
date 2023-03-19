@@ -9,7 +9,7 @@ static int graphics_create_instance(graphics_t graphics);
 static int graphics_create_surface(graphics_t graphics);
 static int graphics_create_physical_device(graphics_t graphics);
 static int graphics_create_logical_device(graphics_t graphics);
-static int graphics_create_swap_chain(graphics_t graphics);
+static int graphics_create_swapchain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_shader_modules(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
@@ -56,7 +56,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     CUBE_ASSERT(graphics_create_surface(*graphics) == CUBE_SUCCESS, "failed to create surface")
     CUBE_ASSERT(graphics_create_physical_device(*graphics) == CUBE_SUCCESS, "failed to create physical device")
     CUBE_ASSERT(graphics_create_logical_device(*graphics) == CUBE_SUCCESS, "failed to create logical device")
-    CUBE_ASSERT(graphics_create_swap_chain(*graphics) == CUBE_SUCCESS, "failed to create swapchain")
+    CUBE_ASSERT(graphics_create_swapchain(*graphics) == CUBE_SUCCESS, "failed to create swapchain")
     CUBE_ASSERT(graphics_create_image_views(*graphics) == CUBE_SUCCESS, "failed to create image views")
     CUBE_ASSERT(graphics_create_shader_modules(*graphics) == CUBE_SUCCESS, "failed to create shader modules")
     CUBE_ASSERT(graphics_create_render_pass(*graphics) == CUBE_SUCCESS, "failed to create render pass")
@@ -232,8 +232,10 @@ int graphics_create_instance(graphics_t graphics)
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &application_info,
+#ifndef NDEBUG
         .enabledLayerCount = instance_layer_count,
         .ppEnabledLayerNames = &instance_layers[0],
+#endif
     };
 
     CUBE_ASSERT(
@@ -424,7 +426,7 @@ int graphics_create_logical_device(graphics_t graphics)
     CUBE_END_FUNCTION
 }
 
-int graphics_create_swap_chain(graphics_t graphics)
+int graphics_create_swapchain(graphics_t graphics)
 {
     int status;
     VkResult vk_result;
@@ -443,38 +445,39 @@ int graphics_create_swap_chain(graphics_t graphics)
     vk_result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(graphics->vk_physical_device, graphics->vk_surface, &surface_capabilities);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed(%d)\n", vk_result);
         goto error;
     }
 
     vk_result = vkGetPhysicalDeviceSurfaceFormatsKHR(graphics->vk_physical_device, graphics->vk_surface, &surface_format_count, NULL);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: first call to vkGetPhysicalDeviceSurfaceFormatsKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: first call to vkGetPhysicalDeviceSurfaceFormatsKHR failed(%d)\n", vk_result);
         goto error;
     }
 
     surface_formats = calloc(surface_format_count, sizeof(VkSurfaceFormatKHR));
     if (surface_formats == NULL)
     {
-        fputs("graphics_create_swap_chain: failed to allocate surface formats\n", stderr);
+        fputs("graphics_create_swapchain: failed to allocate surface formats\n", stderr);
         goto error;
     }
 
     vk_result = vkGetPhysicalDeviceSurfaceFormatsKHR(graphics->vk_physical_device, graphics->vk_surface, &surface_format_count, surface_formats);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: second call to vkGetPhysicalDeviceSurfaceFormatsKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: second call to vkGetPhysicalDeviceSurfaceFormatsKHR failed(%d)\n", vk_result);
         goto error;
     }
 
-    if (surface_formats[0].format != VK_FORMAT_B8G8R8A8_UNORM)
+    uint32_t surface_format_index;
+    for (surface_format_index = 0; surface_format_index < surface_format_count; surface_format_index++)
     {
-        fputs("graphics_create_swap_chain: surface_formats[0].format != VK_FORMAT_B8G8R8A8_UNORM\n", stderr);
-        goto error;
+        if ((surface_formats + surface_format_index)->format == VK_FORMAT_B8G8R8A8_UNORM)
+        {
+            graphics->vk_surface_format = *(surface_formats + surface_format_index);
+        }
     }
-
-    graphics->vk_surface_format = *surface_formats;
 
     SDL_Vulkan_GetDrawableSize(graphics->window, &drawable_width, &drawable_height);
     drawable_width = CLAMP((uint32_t)drawable_width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
@@ -484,8 +487,6 @@ int graphics_create_swap_chain(graphics_t graphics)
     swapchain_size.height = drawable_height;
 
     image_count = CLAMP(surface_capabilities.minImageCount + 1, surface_capabilities.minImageCount, surface_capabilities.maxImageCount);
-
-    printf("images: %d\n", surface_capabilities.maxImageCount);
 
     SDL_memset(&swapchain_create_info, 0, sizeof(VkSwapchainCreateInfoKHR));
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -517,28 +518,28 @@ int graphics_create_swap_chain(graphics_t graphics)
     vk_result = vkCreateSwapchainKHR(graphics->vk_device, &swapchain_create_info, NULL, &graphics->vk_swapchain);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: vkCreateSwapchainKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: vkCreateSwapchainKHR failed(%d)\n", vk_result);
         goto error;
     }
 
     vk_result = vkGetSwapchainImagesKHR(graphics->vk_device, graphics->vk_swapchain, &graphics->vk_image_count, NULL);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: first call to vkGetSwapchainImagesKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: first call to vkGetSwapchainImagesKHR failed(%d)\n", vk_result);
         goto error;
     }
 
     graphics->vk_images = calloc(graphics->vk_image_count, sizeof(VkImage));
     if (graphics->vk_images == NULL)
     {
-        fputs("graphics_create_swap_chain: failed to allocate images\n", stderr);
+        fputs("graphics_create_swapchain: failed to allocate images\n", stderr);
         goto error;
     }
 
     vk_result = vkGetSwapchainImagesKHR(graphics->vk_device, graphics->vk_swapchain, &graphics->vk_image_count, graphics->vk_images);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_create_swap_chain: second call to vkGetSwapchainImagesKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_create_swapchain: second call to vkGetSwapchainImagesKHR failed(%d)\n", vk_result);
         goto error;
     }
 

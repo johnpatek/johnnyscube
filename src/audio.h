@@ -15,7 +15,7 @@ struct audio_s
     SDL_AudioSpec spec;
 
     wav *wavs;
-    int wav_count;
+    uint32_t wav_count;
 
     SDL_mutex *current_mutex;
     wav *current;
