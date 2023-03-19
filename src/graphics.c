@@ -20,7 +20,7 @@ static int graphics_create_command_buffers(graphics_t graphics);
 static int graphics_create_sync_objects(graphics_t graphics);
 
 // graphics_render() helper functions;
-static int graphics_render_aquire_image(graphics_t graphics);
+static int graphics_render_acquire_image(graphics_t graphics);
 static int graphics_render_reset_commands(graphics_t graphics);
 static int graphics_render_record_commands(graphics_t graphics);
 static int graphics_render_queue_submit(graphics_t graphics);
@@ -28,6 +28,12 @@ static int graphics_render_queue_present(graphics_t graphics);
 
 // misc. utility functions
 static int graphics_util_read_file(const char *path, void **data, size_t *size);
+static int graphics_util_memory_type(
+    VkPhysicalDevice physical_device,
+    uint32_t type_filter,
+    VkMemoryPropertyFlags properties,
+    uint32_t *type);
+
 static VkBool32 graphics_util_debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -40,79 +46,37 @@ static VkBool32 graphics_util_debug_callback(
 
 int graphics_create(graphics_t *graphics, const char *const resource_directory)
 {
-    int status;
-
-    status = (graphics != NULL) ? CUBE_SUCCESS : CUBE_FAILURE;
-    if (status != CUBE_SUCCESS)
-    {
-        fputs("graphics_create: invalid graphics handle\n", stderr);
-        goto error;
-    }
-
-    *graphics = malloc(sizeof(struct graphics_s));
-    status = (*graphics != NULL) ? CUBE_SUCCESS : CUBE_FAILURE;
-    if (status != CUBE_SUCCESS)
-    {
-        fputs("graphics_create: failed to allocate graphics\n", stderr);
-        goto error;
-    }
-
+    CUBE_BEGIN_FUNCTION
+    CUBE_ASSERT(graphics != NULL, "graphics handle cannot be NULL")
+    *graphics = calloc(1, sizeof(struct graphics_s));
+    CUBE_ASSERT(*graphics != NULL, "failed to allocate graphics")
     (*graphics)->resource_directory = resource_directory;
-
-#define GRAPHICS_CREATE(FUNC)                                 \
-    puts(#FUNC);                                              \
-    status = FUNC(*graphics);                                 \
-    if (status != CUBE_SUCCESS)                               \
-    {                                                         \
-        fputs("graphics_create: " #FUNC " failed\n", stderr); \
-        goto error;                                           \
-    }
-
-    GRAPHICS_CREATE(graphics_create_window)
-    GRAPHICS_CREATE(graphics_create_instance)
-    GRAPHICS_CREATE(graphics_create_surface)
-    GRAPHICS_CREATE(graphics_create_physical_device)
-    GRAPHICS_CREATE(graphics_create_logical_device)
-    GRAPHICS_CREATE(graphics_create_swap_chain)
-    GRAPHICS_CREATE(graphics_create_image_views)
-    GRAPHICS_CREATE(graphics_create_shader_modules)
-    GRAPHICS_CREATE(graphics_create_render_pass)
-    GRAPHICS_CREATE(graphics_create_pipeline)
-    GRAPHICS_CREATE(graphics_create_framebuffers)
-    GRAPHICS_CREATE(graphics_create_command_pool)
-    GRAPHICS_CREATE(graphics_create_command_buffers)
-    GRAPHICS_CREATE(graphics_create_sync_objects)
-
-    goto done;
-error:
-    fputs("graphics_create: fatal error\n", stderr);
-done:
-    return status;
+    CUBE_ASSERT(graphics_create_window(*graphics) == CUBE_SUCCESS, "failed to create window")
+    CUBE_ASSERT(graphics_create_instance(*graphics) == CUBE_SUCCESS, "failed to create instance")
+    CUBE_ASSERT(graphics_create_surface(*graphics) == CUBE_SUCCESS, "failed to create surface")
+    CUBE_ASSERT(graphics_create_physical_device(*graphics) == CUBE_SUCCESS, "failed to create physical device")
+    CUBE_ASSERT(graphics_create_logical_device(*graphics) == CUBE_SUCCESS, "failed to create logical device")
+    CUBE_ASSERT(graphics_create_swap_chain(*graphics) == CUBE_SUCCESS, "failed to create swapchain")
+    CUBE_ASSERT(graphics_create_image_views(*graphics) == CUBE_SUCCESS, "failed to create image views")
+    CUBE_ASSERT(graphics_create_shader_modules(*graphics) == CUBE_SUCCESS, "failed to create shader modules")
+    CUBE_ASSERT(graphics_create_render_pass(*graphics) == CUBE_SUCCESS, "failed to create render pass")
+    CUBE_ASSERT(graphics_create_pipeline(*graphics) == CUBE_SUCCESS, "failed to create graphics pipeline")
+    CUBE_ASSERT(graphics_create_framebuffers(*graphics) == CUBE_SUCCESS, "failed to create framebuffers")
+    CUBE_ASSERT(graphics_create_command_pool(*graphics) == CUBE_SUCCESS, "failed to create command pool")
+    CUBE_ASSERT(graphics_create_command_buffers(*graphics) == CUBE_SUCCESS, "failed to create command buffer")
+    CUBE_ASSERT(graphics_create_sync_objects(*graphics) == CUBE_SUCCESS, "failed to create sync objects")
+    CUBE_END_FUNCTION
 }
 
 int graphics_render(graphics_t graphics)
 {
-    int status;
-
-#define GRAPHICS_RENDER(FUNC)                                 \
-    status = FUNC(graphics);                                  \
-    if (status != CUBE_SUCCESS)                               \
-    {                                                         \
-        fputs("graphics_render: " #FUNC " failed\n", stderr); \
-        goto error;                                           \
-    }
-
-    GRAPHICS_RENDER(graphics_render_aquire_image)
-    GRAPHICS_RENDER(graphics_render_reset_commands)
-    GRAPHICS_RENDER(graphics_render_record_commands)
-    GRAPHICS_RENDER(graphics_render_queue_submit)
-    GRAPHICS_RENDER(graphics_render_queue_present)
-
-    goto done;
-error:
-    fputs("graphics_render: fatal error\n", stderr);
-done:
-    return status;
+    CUBE_BEGIN_FUNCTION
+    CUBE_ASSERT(graphics_render_acquire_image(graphics) == CUBE_SUCCESS, "failed to acquire image")
+    CUBE_ASSERT(graphics_render_reset_commands(graphics) == CUBE_SUCCESS, "failed to reset commands")
+    CUBE_ASSERT(graphics_render_record_commands(graphics) == CUBE_SUCCESS, "failed to record commands")
+    CUBE_ASSERT(graphics_render_queue_submit(graphics) == CUBE_SUCCESS, "failed to submit image")
+    CUBE_ASSERT(graphics_render_queue_present(graphics) == CUBE_SUCCESS, "failed to present image")
+    CUBE_END_FUNCTION
 }
 
 void graphics_destroy(graphics_t graphics)
@@ -193,6 +157,14 @@ void graphics_destroy(graphics_t graphics)
         {
             free(graphics->vk_images);
         }
+        if (graphics->vk_vertex_buffer_memory != NULL)
+        {
+            vkFreeMemory(graphics->vk_device, graphics->vk_vertex_buffer_memory, NULL);
+        }
+        if (graphics->vk_vertex_buffer != NULL)
+        {
+            vkDestroyBuffer(graphics->vk_device, graphics->vk_vertex_buffer, NULL);
+        }
         if (graphics->vk_swapchain != NULL)
         {
             vkDestroySwapchainKHR(
@@ -224,19 +196,12 @@ void graphics_destroy(graphics_t graphics)
 
 int graphics_create_window(graphics_t graphics)
 {
-    int status;
+    CUBE_BEGIN_FUNCTION
     SDL_DisplayMode display_mode;
-    SDL_Window *new_window;
 
-    status = CUBE_SUCCESS;
+    CUBE_ASSERT(SDL_GetCurrentDisplayMode(0, &display_mode) >= 0, SDL_GetError())
 
-    if (SDL_GetCurrentDisplayMode(0, &display_mode) < 0)
-    {
-        fprintf(stderr, "graphics_create_window: SDL_GetCurrentDisplayMode returned error \"%s\"\n", SDL_GetError());
-        goto error;
-    }
-
-    new_window = SDL_CreateWindow(
+    graphics->window = SDL_CreateWindow(
         "Johnny's Cube",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
@@ -244,120 +209,74 @@ int graphics_create_window(graphics_t graphics)
         display_mode.h,
         SDL_WINDOW_FULLSCREEN | SDL_WINDOW_VULKAN);
 
-    if (new_window == NULL)
-    {
-        fprintf(stderr, "graphics_create_window: SDL_GetCreateWindow returned error \"%s\"\n", SDL_GetError());
-        goto error;
-    }
-
-    graphics->window = new_window;
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_ASSERT(graphics->window != NULL, SDL_GetError())
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_instance(graphics_t graphics)
 {
-    const char *validation_layers[] = {
+    CUBE_BEGIN_FUNCTION
+    const char *instance_layers[] = {
         "VK_LAYER_KHRONOS_validation",
     };
-    VkDebugUtilsMessengerCreateInfoEXT debug_message_create_info = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = graphics_util_debug_callback,
+    uint32_t instance_layer_count = sizeof(instance_layers) / sizeof(instance_layers[0]);
+
+    const VkApplicationInfo application_info = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName = "Johnny's Cube",
+        .applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
+        .pEngineName = "Johnny's Engine",
+        .engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0),
+        .apiVersion = VK_MAKE_API_VERSION(0, 1, 0, 3),
     };
-    int status;
-    unsigned int instance_extention_count;
-    const char **instance_extension_names;
-    VkApplicationInfo application_info;
-    VkInstanceCreateInfo instance_create_info;
-    VkResult create_instance_result;
+    VkInstanceCreateInfo instance_create_info = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &application_info,
+        .enabledLayerCount = instance_layer_count,
+        .ppEnabledLayerNames = &instance_layers[0],
+    };
 
-    status = CUBE_SUCCESS;
-    instance_extension_names = NULL;
+    CUBE_ASSERT(
+        SDL_Vulkan_GetInstanceExtensions(
+            graphics->window,
+            &instance_create_info.enabledExtensionCount,
+            NULL) == SDL_TRUE,
+        "failed to get instance extension count")
 
-    if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, NULL) != SDL_TRUE)
-    {
-        fprintf(stderr, "graphics_create_instance: first call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
-        goto error;
-    }
+    instance_create_info.ppEnabledExtensionNames = CUBE_CALLOC(
+        instance_create_info.enabledExtensionCount,
+        sizeof(char *));
 
-    if (instance_extention_count > 0)
-    {
-        instance_extension_names = calloc(instance_extention_count, sizeof(char *));
-        if (instance_extension_names == NULL)
-        {
-            fputs("graphics_create_instance: failed to allocate instance extension names\n", stderr);
-            goto error;
-        }
+    CUBE_ASSERT(
+        instance_create_info.ppEnabledExtensionNames != NULL,
+        "failed to allocate instance extensions")
 
-        if (SDL_Vulkan_GetInstanceExtensions(graphics->window, &instance_extention_count, instance_extension_names) != SDL_TRUE)
-        {
-            fprintf(stderr, "graphics_create_instance: second call to SDL_Vulkan_GetInstanceExtensions returned error \"%s\"\n", SDL_GetError());
-            goto error;
-        }
-    }
-    else
-    {
-        instance_extension_names = NULL;
-    }
+    CUBE_ASSERT(
+        SDL_Vulkan_GetInstanceExtensions(
+            graphics->window,
+            &instance_create_info.enabledExtensionCount,
+            (const char **)instance_create_info.ppEnabledExtensionNames) == SDL_TRUE,
+        "failed to get instance extension names")
 
-    SDL_memset(&application_info, 0, sizeof(VkApplicationInfo));
-    application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    application_info.pApplicationName = "Johnny's Cube";
-    application_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
-    application_info.pEngineName = "Johnny's Engine";
-    application_info.engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
-    application_info.pNext = NULL;
+    VK_CHECK_RESULT(
+        vkCreateInstance(
+            (const VkInstanceCreateInfo *)&instance_create_info,
+            NULL,
+            &graphics->vk_instance))
 
-    SDL_memset(&instance_create_info, 0, sizeof(VkInstanceCreateInfo));
-    instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instance_create_info.pApplicationInfo = &application_info;
-    instance_create_info.enabledLayerCount = 1;
-    instance_create_info.ppEnabledLayerNames = validation_layers;
-    instance_create_info.enabledExtensionCount = instance_extention_count;
-    instance_create_info.ppEnabledExtensionNames = instance_extension_names;
-    instance_create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT *)&debug_message_create_info;
-
-    create_instance_result = vkCreateInstance(&instance_create_info, NULL, &graphics->vk_instance);
-    if (create_instance_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "create_graphics_instance: vkCreateInstance failed(%d)\n", (int)create_instance_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    if (instance_extension_names != NULL)
-    {
-        free(instance_extension_names);
-    }
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_surface(graphics_t graphics)
 {
-    int status;
-
-    status = CUBE_SUCCESS;
-
-    if (SDL_Vulkan_CreateSurface(graphics->window, graphics->vk_instance, &graphics->vk_surface) == SDL_FALSE)
-    {
-        fprintf(stderr, "create_graphics_surface: SDL_Vulkan_CreateSurface returned error \"%s\"\n", SDL_GetError());
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_BEGIN_FUNCTION
+    CUBE_ASSERT(
+        SDL_Vulkan_CreateSurface(
+            graphics->window,
+            graphics->vk_instance,
+            &graphics->vk_surface) == SDL_TRUE,
+        SDL_GetError())
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_physical_device(graphics_t graphics)
@@ -464,63 +383,45 @@ done:
 
 int graphics_create_logical_device(graphics_t graphics)
 {
+    CUBE_BEGIN_FUNCTION
     const char *const device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     const float queue_priorities[] = {1.0f};
     const VkPhysicalDeviceFeatures device_features = {.samplerAnisotropy = VK_TRUE};
-    int status;
-    VkResult vk_result;
-    VkDeviceQueueCreateInfo queue_create_infos[2];
-    uint32_t unique_queue_indices;
-    VkDeviceCreateInfo device_create_info;
+    VkDeviceQueueCreateInfo queue_create_infos[] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = graphics->vk_graphics_queue_index,
+            .pQueuePriorities = &queue_priorities[0],
+            .queueCount = 1,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = graphics->vk_present_queue_index,
+            .pQueuePriorities = &queue_priorities[0],
+            .queueCount = 1,
+        },
+    };
+    uint32_t unique_queue_count = (graphics->vk_graphics_queue_index != graphics->vk_present_queue_index) ? 2 : 1;
+    const VkDeviceCreateInfo device_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = unique_queue_count,
+        .pQueueCreateInfos = &queue_create_infos[0],
+        .enabledExtensionCount = sizeof(device_extensions) / sizeof(device_extensions[0]),
+        .ppEnabledExtensionNames = &device_extensions[0],
+        .pEnabledFeatures = &device_features,
+    };
 
-    status = CUBE_SUCCESS;
-    unique_queue_indices = 1;
-
-    SDL_memset(&queue_create_infos[0], 0, sizeof(VkDeviceQueueCreateInfo));
-    queue_create_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_infos[0].queueFamilyIndex = graphics->vk_graphics_queue_index;
-    queue_create_infos[0].queueCount = 1;
-    queue_create_infos[0].pQueuePriorities = &queue_priorities[0];
-    queue_create_infos[0].flags = 0;
-    queue_create_infos[0].pNext = NULL;
-    if (graphics->vk_graphics_queue_index != graphics->vk_present_queue_index)
-    {
-        SDL_memset(&queue_create_infos[1], 0, sizeof(VkDeviceQueueCreateInfo));
-        queue_create_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_infos[1].queueFamilyIndex = graphics->vk_present_queue_index;
-        queue_create_infos[1].queueCount = 1;
-        queue_create_infos[1].pQueuePriorities = &queue_priorities[0];
-        queue_create_infos[1].flags = 0;
-        queue_create_infos[1].pNext = NULL;
-        unique_queue_indices++;
-    }
-    SDL_memset(&device_create_info, 0, sizeof(VkDeviceCreateInfo));
-    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.pQueueCreateInfos = (VkDeviceQueueCreateInfo *)queue_create_infos;
-    device_create_info.queueCreateInfoCount = unique_queue_indices;
-    device_create_info.ppEnabledExtensionNames = device_extensions;
-    device_create_info.enabledExtensionCount = 1;
-    device_create_info.pEnabledFeatures = &device_features;
-    device_create_info.pNext = NULL;
-    device_create_info.ppEnabledLayerNames = NULL;
-    device_create_info.enabledLayerCount = 0;
-
-    vk_result = vkCreateDevice(graphics->vk_physical_device, &device_create_info, NULL, &graphics->vk_device);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_logical_device: vkCreateDevice failed(%d)\n", vk_result);
-        goto error;
-    }
+    CUBE_ASSERT(
+        vkCreateDevice(
+            graphics->vk_physical_device,
+            &device_create_info,
+            NULL,
+            &graphics->vk_device) == VK_SUCCESS,
+        "failed to create device")
 
     vkGetDeviceQueue(graphics->vk_device, graphics->vk_graphics_queue_index, 0, &graphics->vk_graphics_queue);
-
     vkGetDeviceQueue(graphics->vk_device, graphics->vk_present_queue_index, 0, &graphics->vk_present_queue);
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_swap_chain(graphics_t graphics)
@@ -583,6 +484,8 @@ int graphics_create_swap_chain(graphics_t graphics)
     swapchain_size.height = drawable_height;
 
     image_count = CLAMP(surface_capabilities.minImageCount + 1, surface_capabilities.minImageCount, surface_capabilities.maxImageCount);
+
+    printf("images: %d\n", surface_capabilities.maxImageCount);
 
     SDL_memset(&swapchain_create_info, 0, sizeof(VkSwapchainCreateInfoKHR));
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -891,6 +794,36 @@ done:
 
 int graphics_create_pipeline(graphics_t graphics)
 {
+    const vertex_t vertices[] = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
+    VkVertexInputBindingDescription vertex_input_binding_descritpion = {
+        .binding = 0,
+        .stride = sizeof(vertex_t),
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+    VkVertexInputAttributeDescription vertex_input_attribute_descritpions[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = offsetof(vertex_t, position),
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = offsetof(vertex_t, color),
+        },
+    };
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &vertex_input_binding_descritpion,
+        .vertexAttributeDescriptionCount = 2,
+        .pVertexAttributeDescriptions = &vertex_input_attribute_descritpions[0],
+    };
     VkPipelineShaderStageCreateInfo shader_stages[] = {
         // vertex shader
         {
@@ -906,11 +839,6 @@ int graphics_create_pipeline(graphics_t graphics)
             .module = graphics->vk_fragment_shader,
             .pName = "main",
         },
-    };
-    VkPipelineVertexInputStateCreateInfo vertex_input_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 0,
-        .vertexAttributeDescriptionCount = 0,
     };
     VkPipelineInputAssemblyStateCreateInfo input_assembly_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -963,11 +891,90 @@ int graphics_create_pipeline(graphics_t graphics)
         .setLayoutCount = 0,
         .pushConstantRangeCount = 0,
     };
+    VkBufferCreateInfo buffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = 3 * sizeof(vertices[0]),
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
     int status;
     VkResult vk_result;
+    VkMemoryRequirements buffer_memory_requirements;
+    uint32_t memory_type_index;
     VkPipelineLayout pipeline_layout;
+    void *data;
 
     status = CUBE_SUCCESS;
+
+    vk_result = vkCreateBuffer(
+        graphics->vk_device,
+        &buffer_create_info,
+        NULL,
+        &graphics->vk_vertex_buffer);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkCreateBuffer failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    vkGetBufferMemoryRequirements(
+        graphics->vk_device,
+        graphics->vk_vertex_buffer,
+        &buffer_memory_requirements);
+
+    if (graphics_util_memory_type(
+            graphics->vk_physical_device,
+            buffer_memory_requirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &memory_type_index) != CUBE_SUCCESS)
+    {
+        fputs("graphics_create_pipeline: graphics_util_memory_type failed\n", stderr);
+        goto error;
+    }
+
+    VkMemoryAllocateInfo buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = buffer_memory_requirements.size,
+        .memoryTypeIndex = memory_type_index,
+    };
+
+    vk_result = vkAllocateMemory(
+        graphics->vk_device,
+        &buffer_allocate_info,
+        NULL,
+        &graphics->vk_vertex_buffer_memory);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkAllocateMemory failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    vk_result = vkBindBufferMemory(
+        graphics->vk_device,
+        graphics->vk_vertex_buffer,
+        graphics->vk_vertex_buffer_memory, 0);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkBindBufferMemory failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    vk_result = vkMapMemory(
+        graphics->vk_device,
+        graphics->vk_vertex_buffer_memory,
+        0,
+        buffer_create_info.size,
+        0,
+        &data);
+    if (vk_result != VK_SUCCESS)
+    {
+        fprintf(stderr, "graphics_create_pipeline: vkMapMemory failed(%d)\n", vk_result);
+        goto error;
+    }
+
+    SDL_memcpy(data, &vertices[0], buffer_create_info.size);
+
+    vkUnmapMemory(graphics->vk_device, graphics->vk_vertex_buffer_memory);
 
     vk_result = vkCreatePipelineLayout(
         graphics->vk_device,
@@ -1187,7 +1194,7 @@ done:
     return status;
 }
 
-int graphics_render_aquire_image(graphics_t graphics)
+int graphics_render_acquire_image(graphics_t graphics)
 {
     int status;
     VkResult vk_result;
@@ -1201,14 +1208,14 @@ int graphics_render_aquire_image(graphics_t graphics)
         VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_render_aquire_image: vkWaitForFences failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_render_acquire_image: vkWaitForFences failed(%d)\n", vk_result);
         goto error;
     }
 
     vk_result = vkResetFences(graphics->vk_device, 1, &graphics->vk_fence);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_render_aquire_image: vkResetFences failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_render_acquire_image: vkResetFences failed(%d)\n", vk_result);
         goto error;
     }
 
@@ -1221,7 +1228,7 @@ int graphics_render_aquire_image(graphics_t graphics)
         &graphics->vk_current_index);
     if (vk_result != VK_SUCCESS)
     {
-        fprintf(stderr, "graphics_render_aquire_image: vkAcquireNextImageKHR failed(%d)\n", vk_result);
+        fprintf(stderr, "graphics_render_acquire_image: vkAcquireNextImageKHR failed(%d)\n", vk_result);
         goto error;
     }
 
@@ -1288,6 +1295,7 @@ int graphics_render_record_commands(graphics_t graphics)
         .offset = {0, 0},
         .extent = graphics->vk_swapchain_size,
     };
+    VkDeviceSize vertex_buffer_offsets = {0};
     int status;
     VkCommandBuffer command_buffer;
     VkResult vk_result;
@@ -1316,9 +1324,14 @@ int graphics_render_record_commands(graphics_t graphics)
         graphics->vk_graphics_pipeline);
     vkCmdSetViewport(command_buffer, 0, 1, &viewport);
     vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+    vkCmdBindVertexBuffers(
+        command_buffer,
+        0,
+        1,
+        &graphics->vk_vertex_buffer,
+        &vertex_buffer_offsets);
     vkCmdDraw(command_buffer, 3, 1, 0, 0);
     vkCmdEndRenderPass(command_buffer);
-
     vk_result = vkEndCommandBuffer(command_buffer);
     if (vk_result != VK_SUCCESS)
     {
@@ -1382,7 +1395,7 @@ int graphics_render_queue_present(graphics_t graphics)
     VkResult vk_result;
 
     status = CUBE_SUCCESS;
-    
+
     VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
@@ -1468,5 +1481,45 @@ done:
     {
         fclose(file);
     }
+    return status;
+}
+
+int graphics_util_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties, uint32_t *type)
+{
+    int status;
+    VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+    uint32_t count;
+    uint32_t index;
+    uint32_t result;
+
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+
+    status = CUBE_SUCCESS;
+    count = physical_device_memory_properties.memoryTypeCount;
+    result = count;
+
+    for (index = 0; index < count; index++)
+    {
+        if (result == count)
+        {
+            if ((physical_device_memory_properties.memoryTypes[index].propertyFlags & properties) && (type_filter & (1 << index)))
+            {
+                result = index;
+            }
+        }
+    }
+
+    if (result == count)
+    {
+        fputs("graphics_util_memory_type: type index out of bounds\n", stderr);
+        goto error;
+    }
+
+    *type = result;
+
+    goto done;
+error:
+    status = CUBE_FAILURE;
+done:
     return status;
 }

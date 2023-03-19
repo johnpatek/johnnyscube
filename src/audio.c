@@ -15,6 +15,7 @@ int audio_create(audio_t *audio, const char *resource_directory)
 int audio_play_random(audio_t audio)
 {
     int random_index;
+    random_index = 0;
     /*
     SDL_LockMutex(audio->current_mutex);
     if (audio->current == NULL)
@@ -31,6 +32,7 @@ int audio_play_random(audio_t audio)
 int audio_destroy(audio_t audio)
 {
     int wav_index;
+    wav_index = 0;
     /*
     SDL_PauseAudioDevice(audio->device_id, SDL_TRUE);
 

@@ -3,13 +3,19 @@
 
 #include "common.h"
 
+typedef struct
+{
+    float position[2];
+    float color[3];
+} vertex_t;
+
 struct graphics_s
 {
     const char *resource_directory;
 
     SDL_DisplayMode display_mode;
     SDL_Window *window;
-
+    
     VkInstance vk_instance;
     VkSurfaceKHR vk_surface;
 
@@ -23,6 +29,9 @@ struct graphics_s
     VkSurfaceFormatKHR vk_surface_format;
     VkSwapchainKHR vk_swapchain;
     VkExtent2D vk_swapchain_size;
+
+    VkBuffer vk_vertex_buffer;
+    VkDeviceMemory vk_vertex_buffer_memory;
 
     uint32_t vk_image_count;
     VkImage *vk_images;
@@ -41,12 +50,12 @@ struct graphics_s
     VkSemaphore vk_image_semaphore;
     VkSemaphore vk_render_semaphore;
     VkFence vk_fence;
-    
+
     uint32_t vk_current_index;
 };
 typedef struct graphics_s *graphics_t;
 
-int graphics_create(graphics_t *graphics, const char * const resource_directory);
+int graphics_create(graphics_t *graphics, const char *const resource_directory);
 
 int graphics_render(graphics_t graphics);
 
