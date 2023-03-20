@@ -23,6 +23,9 @@
 #include <string.h>
 #include <time.h>
 
+#include <dirent.h>
+
+
 #ifdef _WIN32
 #define PATH_SEPARATOR "\\"
 #else

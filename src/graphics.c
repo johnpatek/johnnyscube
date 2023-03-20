@@ -13,6 +13,7 @@ static int graphics_create_swapchain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_shader_modules(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
+static int graphics_create_vertex_buffer(graphics_t graphics);
 static int graphics_create_pipeline(graphics_t graphics);
 static int graphics_create_framebuffers(graphics_t graphics);
 static int graphics_create_command_pool(graphics_t graphics);
@@ -27,22 +28,21 @@ static int graphics_render_queue_submit(graphics_t graphics);
 static int graphics_render_queue_present(graphics_t graphics);
 
 // misc. utility functions
-static int graphics_util_read_file(const char *path, void **data, size_t *size);
+
 static int graphics_util_memory_type(
     VkPhysicalDevice physical_device,
     uint32_t type_filter,
     VkMemoryPropertyFlags properties,
     uint32_t *type);
 
-static VkBool32 graphics_util_debug_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-    VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
-    void *pUserData)
-{
-    fprintf(stderr, "%s\n", pCallbackData->pMessage);
-    return VK_FALSE;
-}
+static int graphics_util_load_shader(graphics_t graphics, const char *shader_file, VkShaderModule *shader_module);
+
+static int graphics_util_create_buffer(
+    graphics_t graphics,
+    const VkBufferCreateInfo *create_info,
+    VkMemoryPropertyFlags properties,
+    VkBuffer *buffer,
+    VkDeviceMemory *buffer_memory);
 
 int graphics_create(graphics_t *graphics, const char *const resource_directory)
 {
@@ -59,6 +59,7 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     CUBE_ASSERT(graphics_create_swapchain(*graphics) == CUBE_SUCCESS, "failed to create swapchain")
     CUBE_ASSERT(graphics_create_image_views(*graphics) == CUBE_SUCCESS, "failed to create image views")
     CUBE_ASSERT(graphics_create_shader_modules(*graphics) == CUBE_SUCCESS, "failed to create shader modules")
+    CUBE_ASSERT(graphics_create_vertex_buffer(*graphics) == CUBE_SUCCESS, "failed to create vertex buffer")
     CUBE_ASSERT(graphics_create_render_pass(*graphics) == CUBE_SUCCESS, "failed to create render pass")
     CUBE_ASSERT(graphics_create_pipeline(*graphics) == CUBE_SUCCESS, "failed to create graphics pipeline")
     CUBE_ASSERT(graphics_create_framebuffers(*graphics) == CUBE_SUCCESS, "failed to create framebuffers")
@@ -560,169 +561,61 @@ done:
 
 int graphics_create_image_views(graphics_t graphics)
 {
-    int status;
+    CUBE_BEGIN_FUNCTION
+    VkImageViewCreateInfo image_view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = graphics->vk_surface_format.format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
     uint32_t image_index;
-    VkResult vk_result;
-
-    status = CUBE_SUCCESS;
 
     graphics->vk_image_views = calloc(graphics->vk_image_count, sizeof(VkImageView));
-    if (graphics->vk_image_views == NULL)
-    {
-        fputs("graphics_create_image_views: failed to allocate image views\n", stderr);
-        goto error;
-    }
+    CUBE_ASSERT(graphics->vk_image_views != NULL, "failed to allocate image views")
 
     for (image_index = 0; image_index < graphics->vk_image_count; image_index++)
     {
-        VkImageViewCreateInfo image_view_create_info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = graphics->vk_images[image_index],
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = graphics->vk_surface_format.format,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        };
-
-        vk_result = vkCreateImageView(
-            graphics->vk_device,
-            &image_view_create_info,
-            NULL,
-            &graphics->vk_image_views[image_index]);
-        if (vk_result != VK_SUCCESS)
-        {
-            fprintf(stderr, "graphics_create_image_views: vkCreateImageView failed(%d)\n", vk_result);
-            goto error;
-        }
+        image_view_create_info.image = *(graphics->vk_images + image_index);
+        VK_CHECK_RESULT(
+            vkCreateImageView(
+                graphics->vk_device,
+                &image_view_create_info,
+                NULL,
+                graphics->vk_image_views + image_index))
     }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_shader_modules(graphics_t graphics)
 {
-    int status;
-    char vertex_shader_path[256];
-    void *vertex_shader_code;
-    size_t vertex_shader_size;
-    char fragment_shader_path[256];
-    void *fragment_shader_code;
-    size_t fragment_shader_size;
-    VkResult vk_result;
+    CUBE_BEGIN_FUNCTION
 
-    status = CUBE_SUCCESS;
-    vertex_shader_code = NULL;
-    fragment_shader_code = NULL;
+    CUBE_ASSERT(
+        graphics_util_load_shader(
+            graphics, "vert.spv",
+            &graphics->vk_vertex_shader) == CUBE_SUCCESS,
+        "failed to load vertex shader")
 
-    sprintf(
-        vertex_shader_path,
-        "%s%s%s%s%s",
-        graphics->resource_directory,
-        PATH_SEPARATOR,
-        "shaders",
-        PATH_SEPARATOR,
-        "vert.spv");
+    CUBE_ASSERT(
+        graphics_util_load_shader(
+            graphics, "frag.spv",
+            &graphics->vk_fragment_shader) == CUBE_SUCCESS,
+        "failed to load fragment shader")
 
-    sprintf(
-        fragment_shader_path,
-        "%s%s%s%s%s",
-        graphics->resource_directory,
-        PATH_SEPARATOR,
-        "shaders",
-        PATH_SEPARATOR,
-        "frag.spv");
-
-    if (graphics_util_read_file(
-            vertex_shader_path,
-            &vertex_shader_code,
-            &vertex_shader_size) != CUBE_SUCCESS)
-    {
-        fputs("graphics_create_shader_modules: first call to graphics_util_read_file() failed\n", stderr);
-        goto error;
-    }
-
-    if (graphics_util_read_file(
-            fragment_shader_path,
-            &fragment_shader_code,
-            &fragment_shader_size) != CUBE_SUCCESS)
-    {
-        fputs("graphics_create_shader_modules: second call to graphics_util_read_file() failed\n", stderr);
-        goto error;
-    }
-
-    VkShaderModuleCreateInfo vertex_shader_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .pCode = (const uint32_t *)vertex_shader_code,
-        .codeSize = vertex_shader_size,
-        .flags = 0,
-        .pNext = NULL,
-    };
-
-    VkShaderModuleCreateInfo fragment_shader_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .pCode = (const uint32_t *)fragment_shader_code,
-        .codeSize = fragment_shader_size,
-        .flags = 0,
-        .pNext = NULL,
-    };
-
-    vk_result = vkCreateShaderModule(
-        graphics->vk_device,
-        &vertex_shader_create_info,
-        NULL,
-        &graphics->vk_vertex_shader);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(
-            stderr,
-            "graphics_create_shader_modules: first call to vkCreateShaderModule failed(%d)\n",
-            vk_result);
-        goto error;
-    }
-
-    vk_result = vkCreateShaderModule(
-        graphics->vk_device,
-        &fragment_shader_create_info,
-        NULL,
-        &graphics->vk_fragment_shader);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(
-            stderr,
-            "graphics_create_shader_modules: second call to vkCreateShaderModule failed(%d)\n",
-            vk_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    if (vertex_shader_code != NULL)
-    {
-        free(vertex_shader_code);
-    }
-    if (fragment_shader_code != NULL)
-    {
-        free(fragment_shader_code);
-    }
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_render_pass(graphics_t graphics)
 {
-    int status;
-    VkResult vk_result;
-    VkAttachmentDescription attachments[] = {
+    CUBE_BEGIN_FUNCTION
+
+    const VkAttachmentDescription attachments[] = {
         // color attachment
         {
             .format = graphics->vk_surface_format.format,
@@ -736,12 +629,12 @@ int graphics_create_render_pass(graphics_t graphics)
         },
     };
 
-    VkAttachmentReference color_reference = {
+    const VkAttachmentReference color_reference = {
         .attachment = 0,
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
-    VkSubpassDescription subpass_description = {
+    const VkSubpassDescription subpass_description = {
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_reference,
@@ -753,7 +646,7 @@ int graphics_create_render_pass(graphics_t graphics)
         .pResolveAttachments = NULL,
     };
 
-    VkSubpassDependency subpass_dependency = {
+    const VkSubpassDependency subpass_dependency = {
         .srcSubpass = VK_SUBPASS_EXTERNAL,
         .dstSubpass = 0,
         .srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
@@ -763,42 +656,104 @@ int graphics_create_render_pass(graphics_t graphics)
         .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
     };
 
-    VkRenderPassCreateInfo render_pass_create_info = {
+    const VkRenderPassCreateInfo render_pass_create_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         .attachmentCount = 1,
-        .pAttachments = (VkAttachmentDescription *)attachments,
+        .pAttachments = &attachments[0],
         .subpassCount = 1,
         .pSubpasses = &subpass_description,
         .dependencyCount = 1,
         .pDependencies = &subpass_dependency,
     };
 
-    status = CUBE_SUCCESS;
-
-    vk_result = vkCreateRenderPass(
+    VK_CHECK_RESULT(vkCreateRenderPass(
         graphics->vk_device,
         &render_pass_create_info,
         NULL,
-        &graphics->vk_render_pass);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_render_pass: vkCreateRenderPass failed(%d)\n", vk_result);
-        goto error;
-    }
+        &graphics->vk_render_pass))
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
+}
+
+int graphics_create_vertex_buffer(graphics_t graphics)
+{
+    CUBE_BEGIN_FUNCTION
+    const vertex_t vertices[] = {
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    };
+    const VkBufferCreateInfo buffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = sizeof(vertices),
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VkMemoryAllocateInfo buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    };
+
+    VkMemoryRequirements buffer_memory_requirements;
+    void *data;
+
+    VK_CHECK_RESULT(
+        vkCreateBuffer(
+            graphics->vk_device,
+            &buffer_create_info,
+            NULL,
+            &graphics->vk_vertex_buffer))
+
+    vkGetBufferMemoryRequirements(
+        graphics->vk_device,
+        graphics->vk_vertex_buffer,
+        &buffer_memory_requirements);
+
+    buffer_allocate_info.allocationSize = buffer_memory_requirements.size;
+
+    CUBE_ASSERT(
+        graphics_util_memory_type(
+            graphics->vk_physical_device,
+            buffer_memory_requirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &buffer_allocate_info.memoryTypeIndex) == CUBE_SUCCESS,
+        "failed to find memory type")
+
+    VK_CHECK_RESULT(
+        vkAllocateMemory(
+            graphics->vk_device,
+            &buffer_allocate_info,
+            NULL,
+            &graphics->vk_vertex_buffer_memory))
+
+    VK_CHECK_RESULT(
+        vkBindBufferMemory(
+            graphics->vk_device,
+            graphics->vk_vertex_buffer,
+            graphics->vk_vertex_buffer_memory, 0))
+
+    VK_CHECK_RESULT(
+        vkMapMemory(
+            graphics->vk_device,
+            graphics->vk_vertex_buffer_memory,
+            0,
+            buffer_create_info.size,
+            0,
+            &data))
+
+    SDL_memcpy(data, &vertices[0], buffer_create_info.size);
+
+    vkUnmapMemory(graphics->vk_device, graphics->vk_vertex_buffer_memory);
+
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_pipeline(graphics_t graphics)
 {
-    const vertex_t vertices[] = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
+    CUBE_BEGIN_FUNCTION
+
     VkVertexInputBindingDescription vertex_input_binding_descritpion = {
         .binding = 0,
         .stride = sizeof(vertex_t),
@@ -808,13 +763,13 @@ int graphics_create_pipeline(graphics_t graphics)
         {
             .binding = 0,
             .location = 0,
-            .format = VK_FORMAT_R32G32_SFLOAT,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
             .offset = offsetof(vertex_t, position),
         },
         {
             .binding = 0,
             .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
             .offset = offsetof(vertex_t, color),
         },
     };
@@ -890,108 +845,11 @@ int graphics_create_pipeline(graphics_t graphics)
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 0,
-        .pushConstantRangeCount = 0,
     };
-    VkBufferCreateInfo buffer_create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = 3 * sizeof(vertices[0]),
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-    int status;
-    VkResult vk_result;
-    VkMemoryRequirements buffer_memory_requirements;
-    uint32_t memory_type_index;
-    VkPipelineLayout pipeline_layout;
-    void *data;
-
-    status = CUBE_SUCCESS;
-
-    vk_result = vkCreateBuffer(
-        graphics->vk_device,
-        &buffer_create_info,
-        NULL,
-        &graphics->vk_vertex_buffer);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkCreateBuffer failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vkGetBufferMemoryRequirements(
-        graphics->vk_device,
-        graphics->vk_vertex_buffer,
-        &buffer_memory_requirements);
-
-    if (graphics_util_memory_type(
-            graphics->vk_physical_device,
-            buffer_memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            &memory_type_index) != CUBE_SUCCESS)
-    {
-        fputs("graphics_create_pipeline: graphics_util_memory_type failed\n", stderr);
-        goto error;
-    }
-
-    VkMemoryAllocateInfo buffer_allocate_info = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = buffer_memory_requirements.size,
-        .memoryTypeIndex = memory_type_index,
-    };
-
-    vk_result = vkAllocateMemory(
-        graphics->vk_device,
-        &buffer_allocate_info,
-        NULL,
-        &graphics->vk_vertex_buffer_memory);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkAllocateMemory failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vk_result = vkBindBufferMemory(
-        graphics->vk_device,
-        graphics->vk_vertex_buffer,
-        graphics->vk_vertex_buffer_memory, 0);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkBindBufferMemory failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    vk_result = vkMapMemory(
-        graphics->vk_device,
-        graphics->vk_vertex_buffer_memory,
-        0,
-        buffer_create_info.size,
-        0,
-        &data);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkMapMemory failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    SDL_memcpy(data, &vertices[0], buffer_create_info.size);
-
-    vkUnmapMemory(graphics->vk_device, graphics->vk_vertex_buffer_memory);
-
-    vk_result = vkCreatePipelineLayout(
-        graphics->vk_device,
-        &pipeline_layout_info,
-        NULL,
-        &pipeline_layout);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkCreatePipelineLayout failed(%d)\n", vk_result);
-        goto error;
-    }
-
     VkGraphicsPipelineCreateInfo pipeline_create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
-        .pStages = shader_stages,
+        .pStages = &shader_stages[0],
         .pVertexInputState = &vertex_input_info,
         .pInputAssemblyState = &input_assembly_info,
         .pViewportState = &viewport_state,
@@ -999,34 +857,31 @@ int graphics_create_pipeline(graphics_t graphics)
         .pMultisampleState = &multisample_state_info,
         .pColorBlendState = &color_blend_state_info,
         .pDynamicState = &dynamic_state_info,
-        .layout = pipeline_layout,
         .renderPass = graphics->vk_render_pass,
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,
     };
 
-    vk_result = vkCreateGraphicsPipelines(
-        graphics->vk_device,
-        VK_NULL_HANDLE,
-        1,
-        &pipeline_create_info,
-        NULL,
-        &graphics->vk_graphics_pipeline);
+    VK_CHECK_RESULT(
+        vkCreatePipelineLayout(
+            graphics->vk_device,
+            &pipeline_layout_info,
+            NULL,
+            &pipeline_create_info.layout))
 
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_pipeline: vkCreatePipelines failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(
+        vkCreateGraphicsPipelines(
+            graphics->vk_device,
+            VK_NULL_HANDLE,
+            1,
+            &pipeline_create_info,
+            NULL,
+            &graphics->vk_graphics_pipeline))
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
     vkDestroyShaderModule(graphics->vk_device, graphics->vk_fragment_shader, NULL);
     vkDestroyShaderModule(graphics->vk_device, graphics->vk_vertex_shader, NULL);
-    vkDestroyPipelineLayout(graphics->vk_device, pipeline_layout, NULL);
-    return status;
+    vkDestroyPipelineLayout(graphics->vk_device, pipeline_create_info.layout, NULL);
+    CUBE_END_FUNCTION
 }
 
 int graphics_create_framebuffers(graphics_t graphics)
@@ -1197,83 +1052,51 @@ done:
 
 int graphics_render_acquire_image(graphics_t graphics)
 {
-    int status;
-    VkResult vk_result;
+    CUBE_BEGIN_FUNCTION
 
-    status = CUBE_SUCCESS;
+    VK_CHECK_RESULT(
+        vkWaitForFences(
+            graphics->vk_device,
+            1,
+            &graphics->vk_fence,
+            VK_TRUE, UINT64_MAX))
 
-    vk_result = vkWaitForFences(
-        graphics->vk_device,
-        1,
-        &graphics->vk_fence,
-        VK_TRUE, UINT64_MAX);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_acquire_image: vkWaitForFences failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(
+        vkResetFences(
+            graphics->vk_device,
+            1,
+            &graphics->vk_fence))
 
-    vk_result = vkResetFences(graphics->vk_device, 1, &graphics->vk_fence);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_acquire_image: vkResetFences failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(
+        vkAcquireNextImageKHR(
+            graphics->vk_device,
+            graphics->vk_swapchain,
+            UINT64_MAX,
+            graphics->vk_image_semaphore,
+            VK_NULL_HANDLE,
+            &graphics->vk_current_index))
 
-    vk_result = vkAcquireNextImageKHR(
-        graphics->vk_device,
-        graphics->vk_swapchain,
-        UINT64_MAX,
-        graphics->vk_image_semaphore,
-        VK_NULL_HANDLE,
-        &graphics->vk_current_index);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_acquire_image: vkAcquireNextImageKHR failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_render_reset_commands(graphics_t graphics)
 {
-    const VkCommandBufferResetFlags reset_flags = 0;
-    int status;
-    VkCommandBuffer command_buffer;
-    VkResult vk_result;
-
-    status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-
-    vk_result = vkResetCommandBuffer(command_buffer, reset_flags);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_reset_commands: vkResetCommandBuffer failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_BEGIN_FUNCTION
+    VK_CHECK_RESULT(
+        vkResetCommandBuffer(
+            *(graphics->vk_command_buffers + graphics->vk_current_index), 0))
+    CUBE_END_FUNCTION
 }
 
 int graphics_render_record_commands(graphics_t graphics)
 {
+    CUBE_BEGIN_FUNCTION
     const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    VkCommandBufferBeginInfo command_buffer_begin_info = {
+    const VkCommandBufferBeginInfo command_buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pNext = NULL,
-        .pInheritanceInfo = NULL,
     };
-    VkRenderPassBeginInfo render_pass_begin_info = {
+    const VkRenderPassBeginInfo render_pass_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .clearValueCount = 1,
         .pClearValues = &clear_color,
@@ -1284,7 +1107,7 @@ int graphics_render_record_commands(graphics_t graphics)
             .offset = {0, 0},
         },
     };
-    VkViewport viewport = {
+    const VkViewport viewport = {
         .x = 0.0f,
         .y = 0.0f,
         .width = (float)graphics->vk_swapchain_size.width,
@@ -1292,29 +1115,15 @@ int graphics_render_record_commands(graphics_t graphics)
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
-    VkRect2D scissor = {
+    const VkRect2D scissor = {
         .offset = {0, 0},
         .extent = graphics->vk_swapchain_size,
     };
-    VkDeviceSize vertex_buffer_offsets = {0};
-    int status;
+    const VkDeviceSize vertex_buffer_offsets[] = {0};
     VkCommandBuffer command_buffer;
-    VkResult vk_result;
 
-    status = CUBE_SUCCESS;
-
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-
-    vk_result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(
-            stderr,
-            "graphics_render_record_commands: vkBeginCommandBuffer failed(%d)\n",
-            vk_result);
-        goto error;
-    }
-
+    command_buffer = *(graphics->vk_command_buffers + graphics->vk_current_index);
+    VK_CHECK_RESULT(vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info))
     vkCmdBeginRenderPass(
         command_buffer,
         &render_pass_begin_info,
@@ -1330,74 +1139,48 @@ int graphics_render_record_commands(graphics_t graphics)
         0,
         1,
         &graphics->vk_vertex_buffer,
-        &vertex_buffer_offsets);
-    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        &vertex_buffer_offsets[0]);
+    vkCmdDraw(command_buffer, 6, 1, 0, 0);
     vkCmdEndRenderPass(command_buffer);
-    vk_result = vkEndCommandBuffer(command_buffer);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(
-            stderr,
-            "graphics_render_record_commands: vkEndCommandBuffer failed(%d)\n",
-            vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(vkEndCommandBuffer(command_buffer))
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_render_queue_submit(graphics_t graphics)
 {
+    CUBE_BEGIN_FUNCTION
+
     const VkPipelineStageFlags wait_dest_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    int status;
-    VkCommandBuffer command_buffer;
-    VkResult vk_result;
 
-    status = CUBE_SUCCESS;
-    command_buffer = graphics->vk_command_buffers[graphics->vk_current_index];
-
-    VkSubmitInfo queue_submit_info = {
+    const VkSubmitInfo queue_submit_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &graphics->vk_image_semaphore,
         .pWaitDstStageMask = &wait_dest_stage_mask,
         .commandBufferCount = 1,
-        .pCommandBuffers = &command_buffer,
+        .pCommandBuffers = graphics->vk_command_buffers + graphics->vk_current_index,
         .signalSemaphoreCount = 1,
         .pSignalSemaphores = &graphics->vk_render_semaphore,
     };
 
-    vk_result = vkQueueSubmit(
-        graphics->vk_graphics_queue,
-        1,
-        &queue_submit_info,
-        graphics->vk_fence);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_queue_submit: vkQueueSubmit failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(
+        vkQueueSubmit(
+            graphics->vk_graphics_queue,
+            1,
+            &queue_submit_info,
+            graphics->vk_fence))
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_render_queue_present(graphics_t graphics)
 {
+    CUBE_BEGIN_FUNCTION
+
     const VkPipelineStageFlags wait_dest_stage_mask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    int status;
-    VkResult vk_result;
 
-    status = CUBE_SUCCESS;
-
-    VkPresentInfoKHR present_info = {
+    const VkPresentInfoKHR present_info = {
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &graphics->vk_render_semaphore,
@@ -1406,121 +1189,83 @@ int graphics_render_queue_present(graphics_t graphics)
         .pImageIndices = &graphics->vk_current_index,
     };
 
-    vk_result = vkQueuePresentKHR(graphics->vk_present_queue, &present_info);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_queue_present: vkQueuePresentKHR failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(vkQueuePresentKHR(graphics->vk_present_queue, &present_info))
 
-    vk_result = vkQueueWaitIdle(graphics->vk_present_queue);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_render_queue_present: vkQueueWaitIdle failed(%d)\n", vk_result);
-        goto error;
-    }
+    VK_CHECK_RESULT(vkQueueWaitIdle(graphics->vk_present_queue))
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
-int graphics_util_read_file(const char *path, void **data, size_t *size)
-{
-    int status;
-    FILE *file;
-
-    status = CUBE_SUCCESS;
-    file = NULL;
-    *data = NULL;
-    *size = 0;
-
-#if defined(_WIN32)
-    fopen_s(&file, path, "rb");
-#else
-    file = fopen(path, "r");
-#endif
-    if (file == NULL)
-    {
-        fputs("graphics_util_read_file: fopen() failed\n", stderr);
-        goto error;
-    }
-
-    if (fseek(file, 0, SEEK_END) != 0)
-    {
-        fputs("graphics_util_read_file: first fseek() failed\n", stderr);
-        goto error;
-    }
-
-    *size = (size_t)ftell(file);
-    *data = malloc(*size);
-    if (*data == NULL)
-    {
-        fputs("graphics_util_read_file: malloc() failed\n", stderr);
-        goto error;
-    }
-
-    if (fseek(file, 0, SEEK_SET) != 0)
-    {
-        fputs("graphics_util_read_file: second fseek() failed\n", stderr);
-        goto error;
-    }
-
-    fread(*data, 1, *size, file);
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-    if (data != NULL)
-    {
-        free(data);
-    }
-done:
-    if (file != NULL)
-    {
-        fclose(file);
-    }
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int graphics_util_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties, uint32_t *type)
 {
-    int status;
+    CUBE_BEGIN_FUNCTION
     VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-    uint32_t count;
     uint32_t index;
-    uint32_t result;
+    SDL_bool found_type;
 
     vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
 
-    status = CUBE_SUCCESS;
-    count = physical_device_memory_properties.memoryTypeCount;
-    result = count;
-
-    for (index = 0; index < count; index++)
+    found_type = SDL_FALSE;
+    for (index = 0; index < physical_device_memory_properties.memoryTypeCount; index++)
     {
-        if (result == count)
+        if (found_type == SDL_FALSE && ((physical_device_memory_properties.memoryTypes[index].propertyFlags & properties) && (type_filter & (1 << index))))
         {
-            if ((physical_device_memory_properties.memoryTypes[index].propertyFlags & properties) && (type_filter & (1 << index)))
-            {
-                result = index;
-            }
+            *type = index;
+            found_type = SDL_TRUE;
         }
     }
 
-    if (result == count)
-    {
-        fputs("graphics_util_memory_type: type index out of bounds\n", stderr);
-        goto error;
-    }
+    CUBE_ASSERT(found_type == SDL_TRUE, "failed to find memory type")
 
-    *type = result;
+    CUBE_END_FUNCTION
+}
 
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
+int graphics_util_load_shader(graphics_t graphics, const char *shader_file, VkShaderModule *shader_module)
+{
+    CUBE_BEGIN_FUNCTION
+    VkShaderModuleCreateInfo shader_module_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    };
+
+    char *shader_path;
+
+    CUBE_ASSERT(
+        SDL_asprintf(
+            &shader_path,
+            "%s%s%s%s%s",
+            graphics->resource_directory,
+            PATH_SEPARATOR,
+            "shaders",
+            PATH_SEPARATOR,
+            shader_file) >= 0,
+        "failed to allocate shader path")
+
+    shader_module_create_info.pCode = SDL_LoadFile(shader_path, &shader_module_create_info.codeSize);
+
+    SDL_free(shader_path);
+
+    CUBE_ASSERT(shader_module_create_info.pCode != NULL, "failed to load shader code")
+
+    VK_CHECK_RESULT(
+        vkCreateShaderModule(
+            graphics->vk_device,
+            &shader_module_create_info,
+            NULL,
+            shader_module))
+
+    SDL_free((void *)shader_module_create_info.pCode);
+
+    CUBE_END_FUNCTION
+}
+
+int graphics_util_create_buffer(
+    graphics_t graphics,
+    const VkBufferCreateInfo *create_info,
+    VkMemoryPropertyFlags properties,
+    VkBuffer *buffer,
+    VkDeviceMemory *buffer_memory)
+{
+    CUBE_BEGIN_FUNCTION
+    
+    CUBE_END_FUNCTION
 }

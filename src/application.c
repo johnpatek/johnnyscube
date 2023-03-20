@@ -8,45 +8,17 @@ int application_create(
     application_t *application,
     const char *const resource_directory)
 {
-    int status;
+    CUBE_BEGIN_FUNCTION
 
-    status = CUBE_SUCCESS;
-
-    if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
-    {
-        fprintf(stderr, "application_create: failed to initialize SDL(%s)\n", SDL_GetError());
-        goto error;
-    }
+    CUBE_ASSERT(SDL_Init(SDL_INIT_EVERYTHING) >= 0, SDL_GetError())
 
     *application = calloc(1, sizeof(struct application_s));
-    if (*application == NULL)
-    {
-        fprintf(stderr, "application_create: failed to allocate new application\n");
-        goto error;
-    }
+    CUBE_ASSERT(*application != NULL, "failed to allocate new application")
 
-    if (audio_create(&(*application)->audio, resource_directory) != CUBE_SUCCESS)
-    {
-        fprintf(stderr, "application_create: failed to create audio subsystem\n");
-        goto error;
-    }
+    CUBE_ASSERT(audio_create(&(*application)->audio, resource_directory) == CUBE_SUCCESS, "failed to create audio subsystem")
+    CUBE_ASSERT(graphics_create(&(*application)->graphics, resource_directory) == CUBE_SUCCESS, "failed to create graphics subsystem")
 
-    if (graphics_create(&(*application)->graphics, resource_directory) != CUBE_SUCCESS)
-    {
-        fprintf(stderr, "application_create: failed to create graphics subsystem\n");
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-    if (application != NULL && *application != NULL)
-    {
-        application_destroy(*application);
-        *application = NULL;
-    }
-done:
-    return status;
+    CUBE_END_FUNCTION
 }
 
 int application_loop(application_t application)

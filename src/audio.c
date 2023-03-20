@@ -70,7 +70,6 @@ void audio_callback(
         bytes_needed);
 
     SDL_LockMutex(audio->current_mutex);
-
     if (audio->current != NULL)
     {
         current_remaining = audio->current->size - audio->current_offset;

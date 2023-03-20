@@ -15,7 +15,7 @@ struct graphics_s
 
     SDL_DisplayMode display_mode;
     SDL_Window *window;
-    
+
     VkInstance vk_instance;
     VkSurfaceKHR vk_surface;
 
@@ -32,7 +32,7 @@ struct graphics_s
 
     VkBuffer vk_vertex_buffer;
     VkDeviceMemory vk_vertex_buffer_memory;
-
+    
     uint32_t vk_image_count;
     VkImage *vk_images;
     VkImageView *vk_image_views;
@@ -44,7 +44,6 @@ struct graphics_s
     VkFramebuffer *vk_framebuffers;
 
     VkCommandPool vk_command_pool;
-
     VkCommandBuffer *vk_command_buffers;
 
     VkSemaphore vk_image_semaphore;
