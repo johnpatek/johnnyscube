@@ -13,11 +13,13 @@ static int graphics_create_swapchain(graphics_t graphics);
 static int graphics_create_image_views(graphics_t graphics);
 static int graphics_create_shader_modules(graphics_t graphics);
 static int graphics_create_render_pass(graphics_t graphics);
-static int graphics_create_vertex_buffer(graphics_t graphics);
-static int graphics_create_pipeline(graphics_t graphics);
-static int graphics_create_framebuffers(graphics_t graphics);
 static int graphics_create_command_pool(graphics_t graphics);
 static int graphics_create_command_buffers(graphics_t graphics);
+static int graphics_create_vertex_buffer(graphics_t graphics);
+static int graphics_create_index_buffer(graphics_t graphics);
+static int graphics_create_uniform_buffers(graphics_t graphics);
+static int graphics_create_pipeline(graphics_t graphics);
+static int graphics_create_framebuffers(graphics_t graphics);
 static int graphics_create_sync_objects(graphics_t graphics);
 
 // graphics_render() helper functions;
@@ -44,6 +46,12 @@ static int graphics_util_create_buffer(
     VkBuffer *buffer,
     VkDeviceMemory *buffer_memory);
 
+static int graphics_util_copy_buffer(
+    graphics_t graphics,
+    VkBuffer source,
+    VkBuffer destination,
+    VkDeviceSize size);
+
 int graphics_create(graphics_t *graphics, const char *const resource_directory)
 {
     CUBE_BEGIN_FUNCTION
@@ -59,12 +67,14 @@ int graphics_create(graphics_t *graphics, const char *const resource_directory)
     CUBE_ASSERT(graphics_create_swapchain(*graphics) == CUBE_SUCCESS, "failed to create swapchain")
     CUBE_ASSERT(graphics_create_image_views(*graphics) == CUBE_SUCCESS, "failed to create image views")
     CUBE_ASSERT(graphics_create_shader_modules(*graphics) == CUBE_SUCCESS, "failed to create shader modules")
+    CUBE_ASSERT(graphics_create_command_pool(*graphics) == CUBE_SUCCESS, "failed to create command pool")
+    CUBE_ASSERT(graphics_create_command_buffers(*graphics) == CUBE_SUCCESS, "failed to create command buffer")
     CUBE_ASSERT(graphics_create_vertex_buffer(*graphics) == CUBE_SUCCESS, "failed to create vertex buffer")
+    CUBE_ASSERT(graphics_create_index_buffer(*graphics) == CUBE_SUCCESS, "failed to create index buffer")
+    CUBE_ASSERT(graphics_create_uniform_buffers(*graphics) == CUBE_SUCCESS, "failed to create uniform buffers")
     CUBE_ASSERT(graphics_create_render_pass(*graphics) == CUBE_SUCCESS, "failed to create render pass")
     CUBE_ASSERT(graphics_create_pipeline(*graphics) == CUBE_SUCCESS, "failed to create graphics pipeline")
     CUBE_ASSERT(graphics_create_framebuffers(*graphics) == CUBE_SUCCESS, "failed to create framebuffers")
-    CUBE_ASSERT(graphics_create_command_pool(*graphics) == CUBE_SUCCESS, "failed to create command pool")
-    CUBE_ASSERT(graphics_create_command_buffers(*graphics) == CUBE_SUCCESS, "failed to create command buffer")
     CUBE_ASSERT(graphics_create_sync_objects(*graphics) == CUBE_SUCCESS, "failed to create sync objects")
     CUBE_END_FUNCTION
 }
@@ -157,6 +167,14 @@ void graphics_destroy(graphics_t graphics)
         if (graphics->vk_images != NULL)
         {
             free(graphics->vk_images);
+        }
+        if (graphics->vk_index_buffer_memory != NULL)
+        {
+            vkFreeMemory(graphics->vk_device, graphics->vk_index_buffer_memory, NULL);
+        }
+        if (graphics->vk_index_buffer != NULL)
+        {
+            vkDestroyBuffer(graphics->vk_device, graphics->vk_index_buffer, NULL);
         }
         if (graphics->vk_vertex_buffer_memory != NULL)
         {
@@ -675,6 +693,46 @@ int graphics_create_render_pass(graphics_t graphics)
     CUBE_END_FUNCTION
 }
 
+int graphics_create_command_pool(graphics_t graphics)
+{
+    CUBE_BEGIN_FUNCTION
+    const VkCommandPoolCreateInfo command_pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = NULL,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = graphics->vk_graphics_queue_index,
+    };
+
+    VK_CHECK_RESULT(
+        vkCreateCommandPool(
+            graphics->vk_device,
+            &command_pool_create_info,
+            NULL,
+            &graphics->vk_command_pool))
+    CUBE_END_FUNCTION
+}
+
+int graphics_create_command_buffers(graphics_t graphics)
+{
+    CUBE_BEGIN_FUNCTION
+    const VkCommandBufferAllocateInfo command_buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = graphics->vk_command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = graphics->vk_image_count,
+    };
+
+    graphics->vk_command_buffers = calloc(graphics->vk_image_count, sizeof(VkCommandBuffer));
+    CUBE_ASSERT(graphics->vk_command_buffers != NULL, "failed to allocate command buffers")
+
+    VK_CHECK_RESULT(vkAllocateCommandBuffers(
+        graphics->vk_device,
+        &command_buffer_allocate_info,
+        graphics->vk_command_buffers))
+
+    CUBE_END_FUNCTION
+}
+
 int graphics_create_vertex_buffer(graphics_t graphics)
 {
     CUBE_BEGIN_FUNCTION
@@ -682,78 +740,141 @@ int graphics_create_vertex_buffer(graphics_t graphics)
         {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
         {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
         {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
         {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     };
-    const VkBufferCreateInfo buffer_create_info = {
+    const VkBufferCreateInfo staging_buffer_create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size = sizeof(vertices),
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-    VkMemoryAllocateInfo buffer_allocate_info = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    const VkBufferCreateInfo vertex_buffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = sizeof(vertices),
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-
-    VkMemoryRequirements buffer_memory_requirements;
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
     void *data;
 
-    VK_CHECK_RESULT(
-        vkCreateBuffer(
-            graphics->vk_device,
-            &buffer_create_info,
-            NULL,
-            &graphics->vk_vertex_buffer))
-
-    vkGetBufferMemoryRequirements(
-        graphics->vk_device,
-        graphics->vk_vertex_buffer,
-        &buffer_memory_requirements);
-
-    buffer_allocate_info.allocationSize = buffer_memory_requirements.size;
+    CUBE_ASSERT(
+        graphics_util_create_buffer(
+            graphics,
+            &staging_buffer_create_info,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &staging_buffer,
+            &staging_buffer_memory) == CUBE_SUCCESS,
+        "failed to create staging buffer")
 
     CUBE_ASSERT(
-        graphics_util_memory_type(
-            graphics->vk_physical_device,
-            buffer_memory_requirements.memoryTypeBits,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            &buffer_allocate_info.memoryTypeIndex) == CUBE_SUCCESS,
-        "failed to find memory type")
-
-    VK_CHECK_RESULT(
-        vkAllocateMemory(
-            graphics->vk_device,
-            &buffer_allocate_info,
-            NULL,
-            &graphics->vk_vertex_buffer_memory))
-
-    VK_CHECK_RESULT(
-        vkBindBufferMemory(
-            graphics->vk_device,
-            graphics->vk_vertex_buffer,
-            graphics->vk_vertex_buffer_memory, 0))
+        graphics_util_create_buffer(
+            graphics,
+            &vertex_buffer_create_info,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            &graphics->vk_vertex_buffer,
+            &graphics->vk_vertex_buffer_memory) == CUBE_SUCCESS,
+        "failed to create vertex buffer")
 
     VK_CHECK_RESULT(
         vkMapMemory(
             graphics->vk_device,
-            graphics->vk_vertex_buffer_memory,
+            staging_buffer_memory,
             0,
-            buffer_create_info.size,
+            staging_buffer_create_info.size,
             0,
             &data))
 
-    SDL_memcpy(data, &vertices[0], buffer_create_info.size);
+    SDL_memcpy(data, &vertices[0], staging_buffer_create_info.size);
 
-    vkUnmapMemory(graphics->vk_device, graphics->vk_vertex_buffer_memory);
+    vkUnmapMemory(graphics->vk_device, staging_buffer_memory);
 
+    CUBE_ASSERT(
+        graphics_util_copy_buffer(
+            graphics,
+            staging_buffer,
+            graphics->vk_vertex_buffer,
+            staging_buffer_create_info.size) == CUBE_SUCCESS,
+        "failed to copy staging buffer")
+
+    vkFreeMemory(graphics->vk_device, staging_buffer_memory, NULL);
+    vkDestroyBuffer(graphics->vk_device, staging_buffer, NULL);
     CUBE_END_FUNCTION
+}
+
+int graphics_create_index_buffer(graphics_t graphics)
+{
+    CUBE_BEGIN_FUNCTION
+    const uint16_t indices[] = {
+        0, 1, 2, 2, 3, 0};
+    const VkBufferCreateInfo staging_buffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = sizeof(indices),
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    const VkBufferCreateInfo vertex_buffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = sizeof(indices),
+        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    void *data;
+
+    CUBE_ASSERT(
+        graphics_util_create_buffer(
+            graphics,
+            &staging_buffer_create_info,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &staging_buffer,
+            &staging_buffer_memory) == CUBE_SUCCESS,
+        "failed to create staging buffer")
+
+    CUBE_ASSERT(
+        graphics_util_create_buffer(
+            graphics,
+            &vertex_buffer_create_info,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            &graphics->vk_index_buffer,
+            &graphics->vk_index_buffer_memory) == CUBE_SUCCESS,
+        "failed to create vertex buffer")
+
+    VK_CHECK_RESULT(
+        vkMapMemory(
+            graphics->vk_device,
+            staging_buffer_memory,
+            0,
+            staging_buffer_create_info.size,
+            0,
+            &data))
+
+    SDL_memcpy(data, &indices[0], staging_buffer_create_info.size);
+
+    vkUnmapMemory(graphics->vk_device, staging_buffer_memory);
+
+    CUBE_ASSERT(
+        graphics_util_copy_buffer(
+            graphics,
+            staging_buffer,
+            graphics->vk_index_buffer,
+            staging_buffer_create_info.size) == CUBE_SUCCESS,
+        "failed to copy staging buffer")
+
+    vkFreeMemory(graphics->vk_device, staging_buffer_memory, NULL);
+    vkDestroyBuffer(graphics->vk_device, staging_buffer, NULL);
+    CUBE_END_FUNCTION
+}
+
+int graphics_create_uniform_buffers(graphics_t graphics)
+{
+    return 0;
 }
 
 int graphics_create_pipeline(graphics_t graphics)
 {
     CUBE_BEGIN_FUNCTION
-
     VkVertexInputBindingDescription vertex_input_binding_descritpion = {
         .binding = 0,
         .stride = sizeof(vertex_t),
@@ -934,68 +1055,6 @@ done:
     return status;
 }
 
-int graphics_create_command_pool(graphics_t graphics)
-{
-    int status;
-    VkResult vk_result;
-    VkCommandPoolCreateInfo command_pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext = NULL,
-        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-        .queueFamilyIndex = graphics->vk_graphics_queue_index,
-    };
-
-    status = CUBE_SUCCESS;
-    vk_result = vkCreateCommandPool(graphics->vk_device, &command_pool_create_info, NULL, &graphics->vk_command_pool);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_command_pool: vkCreateCommandPool failed(%d)\n", vk_result);
-        goto error;
-    }
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
-int graphics_create_command_buffers(graphics_t graphics)
-{
-    int status;
-    VkResult vk_result;
-    VkCommandBufferAllocateInfo command_buffer_allocate_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = graphics->vk_command_pool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = graphics->vk_image_count,
-    };
-
-    status = CUBE_SUCCESS;
-
-    graphics->vk_command_buffers = calloc(graphics->vk_image_count, sizeof(VkCommandBuffer));
-    if (graphics->vk_command_buffers == NULL)
-    {
-        fputs("graphics_create_command_buffers: failed to allocate command buffers\n", stderr);
-        goto error;
-    }
-
-    vk_result = vkAllocateCommandBuffers(
-        graphics->vk_device,
-        &command_buffer_allocate_info,
-        graphics->vk_command_buffers);
-    if (vk_result != VK_SUCCESS)
-    {
-        fprintf(stderr, "graphics_create_command_buffers: vkAllocateCommandBuffers failed(%d)\n", vk_result);
-        goto error;
-    }
-
-    goto done;
-error:
-    status = CUBE_FAILURE;
-done:
-    return status;
-}
-
 int graphics_create_sync_objects(graphics_t graphics)
 {
     int status;
@@ -1140,7 +1199,12 @@ int graphics_render_record_commands(graphics_t graphics)
         1,
         &graphics->vk_vertex_buffer,
         &vertex_buffer_offsets[0]);
-    vkCmdDraw(command_buffer, 6, 1, 0, 0);
+    vkCmdBindIndexBuffer(
+        command_buffer,
+        graphics->vk_index_buffer,
+        0,
+        VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(command_buffer, 6, 1, 0, 0, 0);
     vkCmdEndRenderPass(command_buffer);
     VK_CHECK_RESULT(vkEndCommandBuffer(command_buffer))
 
@@ -1266,6 +1330,101 @@ int graphics_util_create_buffer(
     VkDeviceMemory *buffer_memory)
 {
     CUBE_BEGIN_FUNCTION
-    
+    VkMemoryAllocateInfo buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    };
+
+    VkMemoryRequirements buffer_memory_requirements;
+
+    VK_CHECK_RESULT(
+        vkCreateBuffer(
+            graphics->vk_device,
+            create_info,
+            NULL,
+            buffer))
+
+    vkGetBufferMemoryRequirements(
+        graphics->vk_device,
+        *buffer,
+        &buffer_memory_requirements);
+
+    buffer_allocate_info.allocationSize = buffer_memory_requirements.size;
+
+    CUBE_ASSERT(
+        graphics_util_memory_type(
+            graphics->vk_physical_device,
+            buffer_memory_requirements.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            &buffer_allocate_info.memoryTypeIndex) == CUBE_SUCCESS,
+        "failed to find memory type")
+
+    VK_CHECK_RESULT(
+        vkAllocateMemory(
+            graphics->vk_device,
+            &buffer_allocate_info,
+            NULL,
+            buffer_memory))
+
+    VK_CHECK_RESULT(
+        vkBindBufferMemory(
+            graphics->vk_device,
+            *buffer,
+            *buffer_memory, 0))
+
+    CUBE_END_FUNCTION
+}
+
+static int graphics_util_copy_buffer(
+    graphics_t graphics,
+    VkBuffer source,
+    VkBuffer destination,
+    VkDeviceSize size)
+{
+    CUBE_BEGIN_FUNCTION
+    const VkCommandBufferAllocateInfo command_buffer_allocate_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+        .commandPool = graphics->vk_command_pool,
+    };
+    const VkCommandBufferBeginInfo command_buffer_begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    const VkBufferCopy buffer_copy = {
+        .size = size,
+    };
+    VkCommandBuffer command_buffer;
+    const VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    VK_CHECK_RESULT(
+        vkAllocateCommandBuffers(
+            graphics->vk_device,
+            &command_buffer_allocate_info,
+            &command_buffer))
+
+    VK_CHECK_RESULT(
+        vkBeginCommandBuffer(
+            command_buffer,
+            &command_buffer_begin_info))
+    vkCmdCopyBuffer(command_buffer, source, destination, 1, &buffer_copy);
+
+    VK_CHECK_RESULT(
+        vkEndCommandBuffer(command_buffer))
+
+    VK_CHECK_RESULT(
+        vkQueueSubmit(
+            graphics->vk_graphics_queue,
+            1,
+            &submit_info, VK_NULL_HANDLE))
+
+    VK_CHECK_RESULT(
+        vkQueueWaitIdle(
+            graphics->vk_graphics_queue))
+
     CUBE_END_FUNCTION
 }

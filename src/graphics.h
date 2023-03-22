@@ -3,36 +3,48 @@
 
 #include "common.h"
 
-typedef struct
+typedef struct _vertex_t
 {
     float position[2];
     float color[3];
 } vertex_t;
 
+typedef struct _uniform_buffer_object_t
+{
+    uint32_t model[4][4];
+    uint32_t view[4][4];
+    uint32_t projection[4][4];
+} uniform_buffer_object_t;
+
 struct graphics_s
 {
     const char *resource_directory;
 
-    SDL_DisplayMode display_mode;
+    // TODO: instance.h
     SDL_Window *window;
-
     VkInstance vk_instance;
     VkSurfaceKHR vk_surface;
 
+    // TODO: device.h 
     VkPhysicalDevice vk_physical_device;
     int vk_graphics_queue_index;
     int vk_present_queue_index;
     VkDevice vk_device;
     VkQueue vk_graphics_queue;
     VkQueue vk_present_queue;
-
     VkSurfaceFormatKHR vk_surface_format;
     VkSwapchainKHR vk_swapchain;
     VkExtent2D vk_swapchain_size;
 
+    // TODO: buffers.h
+    VkBuffer vk_index_buffer;
+    VkDeviceMemory vk_index_buffer_memory;
     VkBuffer vk_vertex_buffer;
     VkDeviceMemory vk_vertex_buffer_memory;
-    
+    VkBuffer *uniform_buffers;
+    VkDeviceMemory uniform_buffer_memory;
+    void ** uniform_buffer_mappings;
+
     uint32_t vk_image_count;
     VkImage *vk_images;
     VkImageView *vk_image_views;
