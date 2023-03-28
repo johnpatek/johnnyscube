@@ -20,7 +20,7 @@ static int graphics_util_dot_product(
 static int graphics_util_cross_product(
     float u[3],
     float v[3],
-    float *result[3]);
+    float *result);
 
 int graphics_util_load_shader(
     cube_graphics *graphics,
@@ -211,13 +211,13 @@ int graphics_util_look_at(
         &up[0], 3, &u[0]);
 
     graphics_util_cross_product(
-        f, u, &fu);
+        f, u, &fu[0]);
 
     graphics_util_normalize_vector(
         &fu[0], 3, &s[0]);
 
     graphics_util_cross_product(
-        s, f, &u);
+        s, f, &u[0]);
 
     (ubo->view)[0][0] = s[0];
     (ubo->view)[1][0] = s[1];
@@ -350,14 +350,14 @@ int graphics_util_dot_product(
 int graphics_util_cross_product(
     float u[3],
     float v[3],
-    float *result[3])
+    float *result)
 {
     CUBE_BEGIN_FUNCTION
     CUBE_ASSERT(result != NULL, "NULL output")
 
-    (*result)[0] = u[1] * v[2] - u[2] * v[1];
-    (*result)[1] = u[2] * v[0] - u[0] * v[2];
-    (*result)[2] = u[0] * v[1] - u[1] * v[0];
+    result[0] = u[1] * v[2] - u[2] * v[1];
+    result[1] = u[2] * v[0] - u[0] * v[2];
+    result[2] = u[0] * v[1] - u[1] * v[0];
 
     CUBE_END_FUNCTION
 }

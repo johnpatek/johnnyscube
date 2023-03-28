@@ -212,52 +212,37 @@ int graphics_render_submit_frame(cube_graphics *graphics, cube_frame *frame)
 int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame)
 {
     CUBE_BEGIN_FUNCTION
-    const float base_model[4][4] = {
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
-        {1.0f, 1.0f, 1.0f, 1.0f},
+    clock_t now = clock();
+    int step = (int)(now - graphics->timestamp) / 10;
+    graphics->timestamp = now;
+    graphics->theta = (graphics->theta + step) % 360;
+    float angle = (float)graphics->theta * 3.14 / 180.0;
+    const float model_matrix[4][4] = {
+        {(float)cos(angle), (float)sin(angle), 0.0f, 0.0f},
+        {-1.0f * (float)sin(angle), (float)cos(angle), 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f, 1.0f},
     };
-    const clock_t timestamp = clock();
-    const float delta = (float)(timestamp - graphics->timestamp) / CLOCKS_PER_SEC;
-    const float angle = (1 * 3.14f) / 2.0f;
-    const float axis[] = {0.0f, 0.0f, 1.0f};
+    const float view_matrix[4][4] = {
+        {-0.707107f, -0.408248f, 0.57735f, 0.0f},
+        {0.707107f, -0.408248f, 0.57735f, 0.0f},
+        {0.0f, 0.816497f, 0.57735f, 0.0f},
+        {-0.0f, -0.0f, -3.4641f, 1.0f},
+    };
+    const float projection_matrix[4][4] = {
+        {1.358f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 2.41421f, 0.0f, 0.0f},
+        {0.0f, 0.0f, -1.0202f, -1.0f},
+        {0.0f, 0.0f, -0.20202f, 0.0f},
+    };
 
-    const float eye[] = {2.0f, 2.0f, 2.0f};
-    const float center[] = {0.0f, 0.0f, 0.0f};
-    const float up[] = {0.0f, 0.0f, 1.0f};
+    cube_ubo *updated_ubo = frame->uniform_buffer_mapping;
+    CUBE_ASSERT(updated_ubo != NULL, "invalid mapping")
 
-    const float fov = (45.0f * 3.14f) / 180.0f;
-    const float aspect = (float)graphics->display_size.width / (float)graphics->display_size.height;
-    const float znear = 0.1f;
-    const float zfar = 10.0f;
+    SDL_memcpy(&updated_ubo->model[0][0], &model_matrix[0][0], sizeof(model_matrix));
+    SDL_memcpy(&updated_ubo->view[0][0], &view_matrix[0][0], sizeof(view_matrix));
+    SDL_memcpy(&updated_ubo->projection[0][0], &projection_matrix[0][0], sizeof(projection_matrix));
 
-    cube_ubo updated_ubo;
-
-    CUBE_ASSERT(
-        graphics_util_rotate(
-            base_model,
-            angle,
-            axis,
-            &updated_ubo) == CUBE_SUCCESS,
-        "failed to rotate object")
-    CUBE_ASSERT(
-        graphics_util_look_at(
-            eye,
-            center,
-            up,
-            &updated_ubo) == CUBE_SUCCESS,
-        "failed to calculate view")
-    CUBE_ASSERT(
-        graphics_util_perspective(
-            fov,
-            aspect,
-            znear,
-            zfar,
-            &updated_ubo) == CUBE_SUCCESS,
-        "failed to calculate perspective")
-
-    SDL_memcpy(frame->uniform_buffer_mapping, &updated_ubo, sizeof(cube_ubo));
     CUBE_END_FUNCTION
 }
 
@@ -317,11 +302,20 @@ int graphics_render_prepare_frame(cube_graphics *graphics, cube_frame *frame)
 void graphics_destroy_frame_pool(cube_graphics *graphics)
 {
     uint32_t frame_index;
+
+    if (graphics->descriptor_set_layout != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorSetLayout(graphics->logical_device, graphics->descriptor_set_layout, NULL);
+    }
     for (frame_index = 0; frame_index < graphics->frame_count; frame_index++)
     {
         graphics_destroy_frame(graphics, graphics->frames + frame_index);
     }
     free(graphics->frames);
+    if (graphics->descriptor_pool != VK_NULL_HANDLE)
+    {
+        vkDestroyDescriptorPool(graphics->logical_device, graphics->descriptor_pool, NULL);
+    }
     if (graphics->frame_rendered != VK_NULL_HANDLE)
     {
         vkDestroySemaphore(graphics->logical_device, graphics->frame_rendered, NULL);

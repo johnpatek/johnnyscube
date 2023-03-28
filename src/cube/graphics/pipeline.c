@@ -21,6 +21,10 @@ int graphics_create_pipeline(cube_graphics *graphics)
 
 void graphics_destroy_pipeline(cube_graphics *graphics)
 {
+    if (graphics->pipeline_layout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(graphics->logical_device, graphics->pipeline_layout, NULL);
+    }
     if (graphics->graphics_pipeline != VK_NULL_HANDLE)
     {
         vkDestroyPipeline(graphics->logical_device, graphics->graphics_pipeline, NULL);

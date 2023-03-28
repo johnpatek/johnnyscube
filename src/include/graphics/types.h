@@ -65,6 +65,7 @@ typedef struct _cube_graphics
     VkPipeline graphics_pipeline;
 
     cube_object *object;
+    int theta;
     clock_t timestamp;
 
     VkSwapchainKHR swapchain;
