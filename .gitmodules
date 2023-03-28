@@ -4,3 +4,6 @@
 [submodule "dirent"]
 	path = dirent
 	url = https://github.com/tronkko/dirent
+[submodule "VulkanMemoryAllocator"]
+	path = VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator

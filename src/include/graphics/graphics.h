@@ -3,8 +3,10 @@
 
 #include "graphics/display.h"
 #include "graphics/device.h"
+#include "graphics/object.h"
 #include "graphics/pipeline.h"
 #include "graphics/frame.h"
+#include "graphics/util.h"
 
 int graphics_create(
     cube_graphics **graphics, 

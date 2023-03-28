@@ -1,8 +1,8 @@
 #ifndef CUBE_APPLICATION_H
 #define CUBE_APPLICATION_H
 
-#include "audio.h"
-#include "graphics.h"
+#include "common.h"
+#include "graphics/graphics.h"
 
 typedef struct _cube_application
 {

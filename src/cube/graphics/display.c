@@ -7,9 +7,9 @@ static int graphics_create_surface(cube_graphics *graphics);
 int graphics_create_display(cube_graphics *graphics)
 {
     CUBE_BEGIN_FUNCTION
-    CUBE_ASSERT(graphics_create_window(graphics), "failed to create window")
-    CUBE_ASSERT(graphics_create_instance(graphics), "failed to create window")
-    CUBE_ASSERT(graphics_create_surface(graphics), "failed to create window")
+    CUBE_ASSERT(graphics_create_window(graphics) == CUBE_SUCCESS, "failed to create window")
+    CUBE_ASSERT(graphics_create_instance(graphics) == CUBE_SUCCESS, "failed to create window")
+    CUBE_ASSERT(graphics_create_surface(graphics) == CUBE_SUCCESS, "failed to create window")
     CUBE_END_FUNCTION
 }
 
@@ -24,6 +24,7 @@ int graphics_create_window(cube_graphics *graphics)
 {
     CUBE_BEGIN_FUNCTION
     SDL_DisplayMode display_mode;
+
     CUBE_ASSERT(
         SDL_GetCurrentDisplayMode(
             0,
@@ -56,7 +57,7 @@ int graphics_create_instance(cube_graphics *graphics)
     VkInstanceCreateInfo instance_create_info = {
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &application_info,
-#ifdef CUBE_DEBUG
+#ifndef NDEBUG
         .enabledLayerCount = sizeof(instance_layers) / sizeof(instance_layers[0]),
         .ppEnabledLayerNames = &instance_layers[0],
 #endif

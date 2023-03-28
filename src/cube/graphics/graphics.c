@@ -10,10 +10,14 @@ int graphics_create(
     *graphics = calloc(1, sizeof(cube_graphics));
     CUBE_ASSERT(*graphics != NULL, "failed to allocate graphics")
 
+    SDL_asprintf(&(*graphics)->shader_directory, "%s%s%s", resource_directory, PATH_SEPARATOR, "shaders");
+    CUBE_PUSH((*graphics)->shader_directory);
+
     CUBE_ASSERT(graphics_create_display(*graphics) == CUBE_SUCCESS, "failed to create display")
-
     CUBE_ASSERT(graphics_create_device(*graphics) == CUBE_SUCCESS, "failed to create device")
-
+    CUBE_ASSERT(graphics_create_object(*graphics) == CUBE_SUCCESS, "failed to create object")
+    CUBE_ASSERT(graphics_create_pipeline(*graphics) == CUBE_SUCCESS, "failed to create pipeline")
+    CUBE_ASSERT(graphics_create_frame_pool(*graphics) == CUBE_SUCCESS, "failed to create frame pool")
     CUBE_END_FUNCTION
 }
 
@@ -46,6 +50,9 @@ void graphics_destroy(cube_graphics *graphics)
 {
     if (graphics != NULL)
     {
+        graphics_destroy_frame_pool(graphics);
+        graphics_destroy_pipeline(graphics);
+        graphics_destroy_object(graphics);
         graphics_destroy_device(graphics);
         graphics_destroy_display(graphics);
         free(graphics);
