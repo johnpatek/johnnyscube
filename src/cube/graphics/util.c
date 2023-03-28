@@ -120,14 +120,14 @@ int graphics_util_upload_buffer(
     CUBE_END_FUNCTION
 }
 
-int graphics_util_rotate_model(
+int graphics_util_rotate(
     float model[4][4],
     float angle,
     float axis[3],
-    float *result[4][4])
+    cube_ubo *ubo)
 {
     CUBE_BEGIN_FUNCTION
-    CUBE_ASSERT(result != NULL, "NULL result address")
+    CUBE_ASSERT(ubo != NULL, "NULL result address")
     const float s = (float)sin(angle);
     const float c = (float)cos(angle);
     const float vec[3] = {
@@ -183,7 +183,7 @@ int graphics_util_rotate_model(
         },
     };
 
-    SDL_memcpy(&(*result[0][0]), &(rotated_model[0][0]), sizeof(model));
+    SDL_memcpy(&(ubo->model[0][0]), &(rotated_model[0][0]), sizeof(model));
 
     CUBE_END_FUNCTION
 }
@@ -192,10 +192,9 @@ int graphics_util_look_at(
     float eye[3],
     float center[3],
     float up[3],
-    float *result[4][4])
+    cube_ubo *ubo)
 {
     CUBE_BEGIN_FUNCTION
-    CUBE_ASSERT(result != NULL, "NULL result address")
     float f[3] = {
         center[0] - eye[0],
         center[1] - eye[1],
@@ -220,24 +219,24 @@ int graphics_util_look_at(
     graphics_util_cross_product(
         s, f, &u);
 
-    (*result)[0][0] = s[0];
-    (*result)[1][0] = s[1];
-    (*result)[2][0] = s[2];
-    (*result)[0][1] = u[0];
-    (*result)[1][1] = u[1];
-    (*result)[2][1] = u[2];
-    (*result)[0][2] = -1 * f[0];
-    (*result)[1][2] = -1 * f[1];
-    (*result)[2][2] = -1 * f[2];
+    (ubo->view)[0][0] = s[0];
+    (ubo->view)[1][0] = s[1];
+    (ubo->view)[2][0] = s[2];
+    (ubo->view)[0][1] = u[0];
+    (ubo->view)[1][1] = u[1];
+    (ubo->view)[2][1] = u[2];
+    (ubo->view)[0][2] = -1 * f[0];
+    (ubo->view)[1][2] = -1 * f[1];
+    (ubo->view)[2][2] = -1 * f[2];
     graphics_util_dot_product(
-        &s[0], &eye[0], 3, &(*result)[3][0]);
-    (*result)[3][0] *= -1.0f;
+        &s[0], &eye[0], 3, &(ubo->view)[3][0]);
+    (ubo->view)[3][0] *= -1.0f;
     graphics_util_dot_product(
-        &u[0], &eye[0], 3, &(*result)[3][1]);
-    (*result)[3][1] *= -1.0f;
+        &u[0], &eye[0], 3, &(ubo->view)[3][1]);
+    (ubo->view)[3][1] *= -1.0f;
     graphics_util_dot_product(
-        &f[0], &eye[0], 3, &(*result)[3][2]);
-    (*result)[3][3] = 1.0f;
+        &f[0], &eye[0], 3, &(ubo->view)[3][2]);
+    (ubo->view)[3][3] = 1.0f;
 
     CUBE_END_FUNCTION
 }
@@ -368,31 +367,30 @@ int graphics_util_perspective(
     float aspect,
     float znear,
     float zfar,
-    float *result[4][4])
+    cube_ubo *ubo)
 {
     CUBE_BEGIN_FUNCTION
-    CUBE_ASSERT(result != NULL, "NULL output")
-
+    
     const float range = (float)tan(fov / 2.0f) * znear;
     const float left = range * aspect * -1.0f;
     const float right = range * aspect;
     const float bottom = range * -1.0f;
     const float top = range;
 
-    (*result)[0][0] = (2.0f * znear) / (right - left);
-    (*result)[0][1] = 0.0f;
-    (*result)[0][2] = 0.0f;
-    (*result)[0][3] = 0.0f;
-    (*result)[1][0] = 0.0f;
-    (*result)[1][1] = (2.0f * znear) / (top - bottom);
-    (*result)[1][2] = 0.0f;
-    (*result)[1][3] = 0.0f;
-    (*result)[2][2] = -1.0f * (zfar + znear) / (zfar - znear);
-    (*result)[2][3] = -1.0f;
-    (*result)[3][0] = 0.0f;
-    (*result)[3][1] = 0.0f;
-    (*result)[3][2] = -1.0f * (2.0f * zfar * znear) / (zfar - znear);
-    (*result)[3][3] = 0.0f;
+    (ubo->projection)[0][0] = (2.0f * znear) / (right - left);
+    (ubo->projection)[0][1] = 0.0f;
+    (ubo->projection)[0][2] = 0.0f;
+    (ubo->projection)[0][3] = 0.0f;
+    (ubo->projection)[1][0] = 0.0f;
+    (ubo->projection)[1][1] = (2.0f * znear) / (top - bottom);
+    (ubo->projection)[1][2] = 0.0f;
+    (ubo->projection)[1][3] = 0.0f;
+    (ubo->projection)[2][2] = -1.0f * (zfar + znear) / (zfar - znear);
+    (ubo->projection)[2][3] = -1.0f;
+    (ubo->projection)[3][0] = 0.0f;
+    (ubo->projection)[3][1] = 0.0f;
+    (ubo->projection)[3][2] = -1.0f * (2.0f * zfar * znear) / (zfar - znear);
+    (ubo->projection)[3][3] = 0.0f;
 
     CUBE_END_FUNCTION
 }

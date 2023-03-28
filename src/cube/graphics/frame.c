@@ -220,7 +220,7 @@ int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame)
     };
     const clock_t timestamp = clock();
     const float delta = (float)(timestamp - graphics->timestamp) / CLOCKS_PER_SEC;
-    const float angle = (delta * 3.14f) / 2.0f;
+    const float angle = (1 * 3.14f) / 2.0f;
     const float axis[] = {0.0f, 0.0f, 1.0f};
 
     const float eye[] = {2.0f, 2.0f, 2.0f};
@@ -235,18 +235,18 @@ int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame)
     cube_ubo updated_ubo;
 
     CUBE_ASSERT(
-        graphics_util_rotate_model(
+        graphics_util_rotate(
             base_model,
             angle,
             axis,
-            &updated_ubo.model) == CUBE_SUCCESS,
+            &updated_ubo) == CUBE_SUCCESS,
         "failed to rotate object")
     CUBE_ASSERT(
         graphics_util_look_at(
             eye,
             center,
             up,
-            &updated_ubo.view) == CUBE_SUCCESS,
+            &updated_ubo) == CUBE_SUCCESS,
         "failed to calculate view")
     CUBE_ASSERT(
         graphics_util_perspective(
@@ -254,7 +254,7 @@ int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame)
             aspect,
             znear,
             zfar,
-            &updated_ubo.projection) == CUBE_SUCCESS,
+            &updated_ubo) == CUBE_SUCCESS,
         "failed to calculate perspective")
 
     SDL_memcpy(frame->uniform_buffer_mapping, &updated_ubo, sizeof(cube_ubo));

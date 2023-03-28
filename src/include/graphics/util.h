@@ -16,23 +16,23 @@ int graphics_util_upload_buffer(
     VkBuffer *buffer,
     VmaAllocation *buffer_allocation);
 
-int graphics_util_rotate_model(
+int graphics_util_rotate(
     float model[4][4], 
     float angle, 
     float axis[3], 
-    float *result[4][4]);
+    cube_ubo *ubo);
 
 int graphics_util_look_at(
     float eye[3],
     float center[3], 
     float up[3], 
-    float *result[4][4]);
+    cube_ubo *ubo);
 
 int graphics_util_perspective(
     float fov,
     float aspect, 
     float znear, 
     float zfar,
-    float *result[4][4]);
+    cube_ubo *ubo);
 
 #endif
