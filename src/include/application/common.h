@@ -42,6 +42,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <vk_mem_alloc.h>
+
 #ifdef _WIN32
 #define PATH_SEPARATOR "\\"
 #else

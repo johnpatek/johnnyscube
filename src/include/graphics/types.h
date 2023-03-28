@@ -1,12 +1,7 @@
 #ifndef CUBE_GRAPHICS_TYPES_H
 #define CUBE_GRAPHICS_TYPES_H
 
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_vulkan.h>
-#include <vulkan/vulkan.h>
-#include <vk_mem_alloc.h>
-
-#include <time.h>
+#include "application/common.h"
 
 typedef struct _cube_vertex
 {

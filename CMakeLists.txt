@@ -21,7 +21,7 @@ file(
 
 add_executable(cube ${CUBE_SOURCES})
 
-if(WIN32)
+
 target_include_directories(
     cube 
     PRIVATE 
@@ -30,9 +30,9 @@ target_include_directories(
     ${DIRENT_INCLUDE} 
     ${CMAKE_SOURCE_DIR}/SDL/include Vulkan::Headers 
     ${CMAKE_SOURCE_DIR}/SDL/src/video/khronos)
-target_link_libraries(cube VulkanMemoryAllocator SDL3-static SDL3_main Vulkan::Vulkan)
-else()
-target_include_directories(cube PRIVATE ${CMAKE_SOURCE_DIR}/SDL/include ${CMAKE_SOURCE_DIR}/SDL/src/video/khronos)
 
-target_link_libraries(cube SDL3 /usr/lib/x86_64-linux-gnu/libvulkan.so.1)
+if(WIN32)
+    target_link_libraries(cube VulkanMemoryAllocator SDL3-static SDL3_main Vulkan::Vulkan)
+else()
+    target_link_libraries(cube VulkanMemoryAllocator SDL3 /usr/lib/x86_64-linux-gnu/libvulkan.so.1 m)
 endif()
