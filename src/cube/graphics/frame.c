@@ -3,6 +3,7 @@
 static int graphics_create_swapchain(cube_graphics *graphics);
 static int graphics_create_descriptor_pool(cube_graphics *graphics);
 static int graphics_create_frame(cube_graphics *graphics, VkImage *image, uint32_t index, cube_frame *frame);
+static int graphics_create_initialize_object(cube_graphics *graphics, cube_frame *frame);
 static int graphics_create_descriptor_sets(cube_graphics *graphics);
 static int graphics_create_sync_objects(cube_graphics *graphics);
 static int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame);
@@ -216,32 +217,15 @@ int graphics_render_update_object(cube_graphics *graphics, cube_frame *frame)
     int step = (int)(now - graphics->timestamp) / 10;
     graphics->timestamp = now;
     graphics->theta = (graphics->theta + step) % 360;
-    float angle = (float)graphics->theta * 3.14 / 180.0;
-    const float model_matrix[4][4] = {
-        {(float)cos(angle), (float)sin(angle), 0.0f, 0.0f},
-        {-1.0f * (float)sin(angle), (float)cos(angle), 0.0f, 0.0f},
-        {0.0f, 0.0f, 1.0f, 0.0f},
-        {0.0f, 0.0f, 0.0f, 1.0f},
-    };
-    const float view_matrix[4][4] = {
-        {-0.707107f, -0.408248f, 0.57735f, 0.0f},
-        {0.707107f, -0.408248f, 0.57735f, 0.0f},
-        {0.0f, 0.816497f, 0.57735f, 0.0f},
-        {-0.0f, -0.0f, -3.4641f, 1.0f},
-    };
-    const float projection_matrix[4][4] = {
-        {1.358f, 0.0f, 0.0f, 0.0f},
-        {0.0f, 2.41421f, 0.0f, 0.0f},
-        {0.0f, 0.0f, -1.0202f, -1.0f},
-        {0.0f, 0.0f, -0.20202f, 0.0f},
-    };
+    double angle = (float)graphics->theta * 3.14 / 180.0;
 
-    cube_ubo *updated_ubo = frame->uniform_buffer_mapping;
-    CUBE_ASSERT(updated_ubo != NULL, "invalid mapping")
+    cube_ubo *ubo = frame->uniform_buffer_mapping;
+    CUBE_ASSERT(ubo != NULL, "invalid mapping")
 
-    SDL_memcpy(&updated_ubo->model[0][0], &model_matrix[0][0], sizeof(model_matrix));
-    SDL_memcpy(&updated_ubo->view[0][0], &view_matrix[0][0], sizeof(view_matrix));
-    SDL_memcpy(&updated_ubo->projection[0][0], &projection_matrix[0][0], sizeof(projection_matrix));
+    ubo->model[0][0] = (float)cos(angle);
+    ubo->model[0][1] = (float)sin(angle);
+    ubo->model[1][0] = -1.0f * (float)sin(angle);
+    ubo->model[1][1] = (float)cos(angle);
 
     CUBE_END_FUNCTION
 }
@@ -517,8 +501,49 @@ int graphics_create_descriptor_sets(cube_graphics *graphics)
         write_descriptor_set.dstSet = *(descriptor_sets + index);
         vkUpdateDescriptorSets(graphics->logical_device, 1, &write_descriptor_set, 0, NULL);
         (graphics->frames + index)->descriptor_set = *(descriptor_sets + index);
+        CUBE_ASSERT(graphics_create_initialize_object(graphics, (graphics->frames + index)) == CUBE_SUCCESS, "failed to initialize object")
     }
 
+    CUBE_END_FUNCTION
+}
+
+int graphics_create_initialize_object(cube_graphics *graphics, cube_frame *frame)
+{
+    CUBE_BEGIN_FUNCTION
+    const float model_matrix[4][4] = {
+        {1.0f, 0.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f, 1.0f},
+    };
+    const float view_matrix[4][4] = {
+        {-0.707107f, -0.408248f, 0.57735f, 0.0f},
+        {0.707107f, -0.408248f, 0.57735f, 0.0f},
+        {0.0f, 0.816497f, 0.57735f, 0.0f},
+        {-0.0f, -0.0f, -3.4641f, 1.0f},
+    };
+    const float fov = -3.14f / 4.0f;
+    const float aspect = (float)graphics->display_size.width / (float)graphics->display_size.height;
+    const float znear = 0.1f;
+    const float zfar = 10.0f;
+    const float range = tanf(fov / 2.0f) * znear;
+    const float left = -range * aspect;
+    const float right = range * aspect;
+    const float bottom = -range;
+    const float top = range;
+    const float projection_matrix[4][4] = {
+        {(2.0f * znear) / (right - left), 0.0f, 0.0f, 0.0f},
+        {0.0f, (2.0f * znear) / (top - bottom), 0.0f, 0.0f},
+        {0.0f, 0.0f, -1.0f * (zfar + znear) / (zfar - znear), -1.0f},
+        {0.0f, 0.0f, -1.0f * (2.0f * zfar * znear) / (zfar - znear), 0.0f},
+    };
+
+    cube_ubo *updated_ubo = frame->uniform_buffer_mapping;
+    CUBE_ASSERT(updated_ubo != NULL, "invalid mapping")
+
+    SDL_memcpy(&updated_ubo->model[0][0], &model_matrix[0][0], sizeof(model_matrix));
+    SDL_memcpy(&updated_ubo->view[0][0], &view_matrix[0][0], sizeof(view_matrix));
+    SDL_memcpy(&updated_ubo->projection[0][0], &projection_matrix[0][0], sizeof(projection_matrix));
     CUBE_END_FUNCTION
 }
 
