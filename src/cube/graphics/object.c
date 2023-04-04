@@ -14,7 +14,11 @@ int graphics_create_object(cube_graphics *graphics)
         {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}}};
     const uint32_t indices[] = {
         0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4};
+        4, 5, 6, 6, 7, 4,
+        0, 3, 4, 4, 3, 7,
+        3, 2, 7, 7, 2, 6,
+        2, 1, 6, 6, 1, 5,
+        1, 0, 5, 5, 0, 4};
 
     graphics->object = SDL_calloc(1, sizeof(cube_object));
     CUBE_ASSERT(graphics->object != NULL, "failed to allocate object")

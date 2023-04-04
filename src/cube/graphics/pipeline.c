@@ -1,15 +1,11 @@
 #include "cube.h"
 
-static int graphics_create_surface_properties(cube_graphics *graphics);
 static int graphics_create_render_pass(cube_graphics *graphics);
 static int graphics_create_graphics_pipeline(cube_graphics *graphics);
 
 int graphics_create_pipeline(cube_graphics *graphics)
 {
     CUBE_BEGIN_FUNCTION
-    CUBE_ASSERT(
-        graphics_create_surface_properties(graphics) == CUBE_SUCCESS,
-        "failed to create surface properties")
     CUBE_ASSERT(
         graphics_create_render_pass(graphics) == CUBE_SUCCESS,
         "failed to create render pass")
@@ -35,62 +31,6 @@ void graphics_destroy_pipeline(cube_graphics *graphics)
     }
 }
 
-int graphics_create_surface_properties(cube_graphics *graphics)
-{
-    CUBE_BEGIN_FUNCTION
-    uint32_t surface_format_count;
-    VkSurfaceFormatKHR *surface_formats;
-    uint32_t surface_format_index;
-    VkBool32 found_format;
-
-    VK_CHECK_RESULT(
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-            graphics->physical_device,
-            graphics->surface,
-            &graphics->surface_capabilities))
-
-    graphics->display_size.width = CLAMP(
-        graphics->display_size.width,
-        graphics->surface_capabilities.minImageExtent.width,
-        graphics->surface_capabilities.maxImageExtent.width);
-
-    graphics->display_size.height = CLAMP(
-        graphics->display_size.height,
-        graphics->surface_capabilities.minImageExtent.height,
-        graphics->surface_capabilities.maxImageExtent.height);
-
-    VK_CHECK_RESULT(
-        vkGetPhysicalDeviceSurfaceFormatsKHR(
-            graphics->physical_device,
-            graphics->surface,
-            &surface_format_count,
-            NULL))
-
-    surface_formats = CUBE_CALLOC(surface_format_count, sizeof(VkSurfaceFormatKHR));
-
-    VK_CHECK_RESULT(
-        vkGetPhysicalDeviceSurfaceFormatsKHR(
-            graphics->physical_device,
-            graphics->surface,
-            &surface_format_count,
-            surface_formats))
-
-    found_format = VK_FALSE;
-    for (surface_format_index = 0; surface_format_index < surface_format_count; surface_format_index++)
-    {
-        if (found_format == VK_FALSE)
-        {
-            graphics->surface_format = *(surface_formats + surface_format_index);
-            if (graphics->surface_format.format == VK_FORMAT_B8G8R8A8_UNORM)
-            {
-                found_format = VK_TRUE;
-            }
-        }
-    }
-    CUBE_ASSERT(found_format == VK_TRUE, "failed to find surface format")
-    CUBE_END_FUNCTION
-}
-
 int graphics_create_render_pass(cube_graphics *graphics)
 {
     CUBE_BEGIN_FUNCTION
@@ -105,17 +45,31 @@ int graphics_create_render_pass(cube_graphics *graphics)
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        }, // TODO: add depth attachment
+        },
+        {
+            .format = graphics->depth_format,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        },
     };
     const VkAttachmentReference color_reference = {
         .attachment = 0,
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
+    const VkAttachmentReference depth_reference = {
+        .attachment = 1,
+        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
     const VkSubpassDescription subpass_description = {
         .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_reference,
-        .pDepthStencilAttachment = NULL,
+        .pDepthStencilAttachment = &depth_reference,
         .inputAttachmentCount = 0,
         .pInputAttachments = NULL,
         .preserveAttachmentCount = 0,
@@ -125,15 +79,15 @@ int graphics_create_render_pass(cube_graphics *graphics)
     const VkSubpassDependency subpass_dependency = {
         .srcSubpass = VK_SUBPASS_EXTERNAL,
         .dstSubpass = 0,
-        .srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
-        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        .srcAccessMask = 0,
+        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
     };
     const VkRenderPassCreateInfo render_pass_create_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = 1,
+        .attachmentCount = 2,
         .pAttachments = &attachments[0],
         .subpassCount = 1,
         .pSubpasses = &subpass_description,
@@ -219,6 +173,14 @@ int graphics_create_graphics_pipeline(cube_graphics *graphics)
         .sampleShadingEnable = VK_FALSE,
         .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
     };
+    VkPipelineDepthStencilStateCreateInfo depth_stencil_state_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
+        .depthCompareOp = VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = VK_FALSE,
+        .stencilTestEnable = VK_FALSE,
+    };
     VkPipelineColorBlendAttachmentState color_blend_attachment = {
         .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
         .blendEnable = VK_FALSE,
@@ -266,6 +228,7 @@ int graphics_create_graphics_pipeline(cube_graphics *graphics)
         .pViewportState = &viewport_state,
         .pRasterizationState = &rasterization_state_info,
         .pMultisampleState = &multisample_state_info,
+        .pDepthStencilState = &depth_stencil_state_create_info,
         .pColorBlendState = &color_blend_state_info,
         .pDynamicState = &dynamic_state_info,
         .renderPass = graphics->render_pass,

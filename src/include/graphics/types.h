@@ -63,12 +63,18 @@ typedef struct _cube_graphics
     VkDescriptorSetLayout descriptor_set_layout;
     VkPipelineLayout pipeline_layout;
     VkPipeline graphics_pipeline;
-
+ 
     cube_object *object;
     int theta;
     clock_t timestamp;
 
     VkSwapchainKHR swapchain;
+    VkFormat depth_format;
+    VkBool32 depth_stencil_support;
+    VkImage depth_image;
+    VmaAllocation depth_image_allocation;
+    VkImageView depth_image_view;
+    
     uint32_t frame_count;
     VkDescriptorPool descriptor_pool;
     cube_frame *frames;

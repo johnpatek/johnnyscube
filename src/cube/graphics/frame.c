@@ -1,6 +1,5 @@
 #include "cube.h"
 
-static int graphics_create_swapchain(cube_graphics *graphics);
 static int graphics_create_descriptor_pool(cube_graphics *graphics);
 static int graphics_create_frame(cube_graphics *graphics, VkImage *image, uint32_t index, cube_frame *frame);
 static int graphics_create_initialize_object(cube_graphics *graphics, cube_frame *frame);
@@ -16,10 +15,6 @@ int graphics_create_frame_pool(cube_graphics *graphics)
     uint32_t swapchain_image_count;
     VkImage *swapchain_images;
     uint32_t frame_index;
-
-    CUBE_ASSERT(
-        graphics_create_swapchain(graphics) == CUBE_SUCCESS,
-        "failed to create swapchain")
 
     VK_CHECK_RESULT(
         vkGetSwapchainImagesKHR(
@@ -234,15 +229,18 @@ int graphics_render_prepare_frame(cube_graphics *graphics, cube_frame *frame)
 {
     CUBE_BEGIN_FUNCTION
     const VkCommandBufferResetFlags reset_flags = 0;
-    const VkClearValue clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    const VkClearValue clear_values[] = {
+        {{0.0f, 0.0f, 0.0f, 1.0f}},
+        {1.0f, 0},
+    };
     const VkCommandBufferBeginInfo command_buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
     };
     const VkRenderPassBeginInfo render_pass_begin_info = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .clearValueCount = 1,
-        .pClearValues = &clear_color,
+        .clearValueCount = sizeof(clear_values) / sizeof(clear_values[0]),
+        .pClearValues = &clear_values[0],
         .framebuffer = frame->framebuffer,
         .renderPass = graphics->render_pass,
         .renderArea = {
@@ -312,10 +310,6 @@ void graphics_destroy_frame_pool(cube_graphics *graphics)
     {
         vkDestroyFence(graphics->logical_device, graphics->command_fence, NULL);
     }
-    if (graphics->swapchain != VK_NULL_HANDLE)
-    {
-        vkDestroySwapchainKHR(graphics->logical_device, graphics->swapchain, NULL);
-    }
 }
 
 static int graphics_create_frame(cube_graphics *graphics, VkImage *images, uint32_t index, cube_frame *frame)
@@ -333,15 +327,6 @@ static int graphics_create_frame(cube_graphics *graphics, VkImage *images, uint3
             .layerCount = 1,
         },
         .image = *(images + index),
-    };
-    const VkFramebufferCreateInfo framebuffer_create_info = {
-        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = graphics->render_pass,
-        .attachmentCount = 1,
-        .pAttachments = &frame->image_view,
-        .width = graphics->display_size.width,
-        .height = graphics->display_size.height,
-        .layers = 1,
     };
     const VkCommandBufferAllocateInfo command_buffer_allocate_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -368,6 +353,19 @@ static int graphics_create_frame(cube_graphics *graphics, VkImage *images, uint3
             &image_view_create_info,
             NULL,
             &frame->image_view))
+    VkImageView framebuffer_attachments[] = {
+        frame->image_view,
+        graphics->depth_image_view,
+    };
+    VkFramebufferCreateInfo framebuffer_create_info = {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = graphics->render_pass,
+        .attachmentCount = 2,
+        .pAttachments = &framebuffer_attachments[0],
+        .width = graphics->display_size.width,
+        .height = graphics->display_size.height,
+        .layers = 1,
+    };
     VK_CHECK_RESULT(
         vkCreateFramebuffer(
             graphics->logical_device,
@@ -388,51 +386,6 @@ static int graphics_create_frame(cube_graphics *graphics, VkImage *images, uint3
             &frame->uniform_buffer_allocation,
             &uniform_buffer_allocation_info))
     frame->uniform_buffer_mapping = uniform_buffer_allocation_info.pMappedData;
-    CUBE_END_FUNCTION
-}
-
-int graphics_create_swapchain(cube_graphics *graphics)
-{
-    CUBE_BEGIN_FUNCTION
-    const uint32_t queue_family_indices[] = {
-        graphics->graphics_queue_family_index,
-        graphics->present_queue_family_index,
-    };
-    VkSwapchainCreateInfoKHR swapchain_create_info = {
-        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .surface = graphics->surface,
-        .minImageCount = CLAMP(
-            2,
-            graphics->surface_capabilities.minImageCount,
-            graphics->surface_capabilities.maxImageCount),
-        .imageFormat = graphics->surface_format.format,
-        .imageColorSpace = graphics->surface_format.colorSpace,
-        .imageArrayLayers = 1,
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .imageExtent = {
-            .width = graphics->display_size.width,
-            .height = graphics->display_size.height,
-        },
-        .preTransform = graphics->surface_capabilities.currentTransform,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
-        .clipped = VK_TRUE,
-    };
-
-    if (graphics->graphics_queue_family_index != graphics->present_queue_family_index)
-    {
-        swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        swapchain_create_info.queueFamilyIndexCount = sizeof(queue_family_indices) / sizeof(queue_family_indices[0]);
-        swapchain_create_info.pQueueFamilyIndices = &queue_family_indices[0];
-    }
-
-    VK_CHECK_RESULT(
-        vkCreateSwapchainKHR(
-            graphics->logical_device,
-            &swapchain_create_info,
-            NULL,
-            &graphics->swapchain))
     CUBE_END_FUNCTION
 }
 
@@ -517,12 +470,12 @@ int graphics_create_initialize_object(cube_graphics *graphics, cube_frame *frame
         {0.0f, 0.0f, 0.0f, 1.0f},
     };
     const float view_matrix[4][4] = {
-        {-0.707107f, -0.408248f, 0.57735f, 0.0f},
-        {0.707107f, -0.408248f, 0.57735f, 0.0f},
-        {0.0f, 0.816497f, 0.57735f, 0.0f},
-        {-0.0f, -0.0f, -3.4641f, 1.0f},
+        {0.707107f, 0.408248f, 0.57735f, 0},
+        {-0.707107f, 0.408248f, 0.57735f, 0},
+        {0, -0.816497f, 0.57735f, 0},
+        {0, 0, -3.4641f, 1.0f},
     };
-    const float fov = -3.14f / 4.0f;
+    const float fov = 3.14f / 4.0f;
     const float aspect = (float)graphics->display_size.width / (float)graphics->display_size.height;
     const float znear = 0.1f;
     const float zfar = 10.0f;
